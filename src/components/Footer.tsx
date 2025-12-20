@@ -1,15 +1,15 @@
 export function Footer() {
     return (
-        <footer className="border-t bg-white mt-10">
+        <footer className="border-t bg-background mt-10">
             <div className="container mx-auto px-4 py-6 text-center text-sm text-muted-foreground space-y-2">
                 <p>
                     Hecho con ❤️ por{" "}
-                    <span className="font-medium">Tu Nombre</span>
+                    <span className="font-medium">Sergio Ferrari</span>
                 </p>
 
                 <div className="flex justify-center gap-4">
                     <a
-                        href="https://github.com/tuusuario"
+                        href="https://github.com/kyriokes"
                         target="_blank"
                         className="hover:underline"
                     >
@@ -17,7 +17,7 @@ export function Footer() {
                     </a>
 
                     <a
-                        href="https://linkedin.com/in/tuusuario"
+                        href="https://linkedin.com/in/sergiofb"
                         target="_blank"
                         className="hover:underline"
                     >
