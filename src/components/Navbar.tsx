@@ -10,6 +10,9 @@ export function Navbar() {
                     <a href="/home" className="hover:underline">
                         Inicio
                     </a>
+                    <a href="/debug" className="hover:underline text-red-500 font-bold">
+                        Debug
+                    </a>
                     <a href="#features" className="hover:underline">
                         Características
                     </a>
