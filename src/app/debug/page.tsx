@@ -1,78 +1,119 @@
-'use client'
+"use client";
 
-import { useCvStore } from '@/store/cvStore'
-import { usePositionStore } from '@/store/PositionStore'
+import { useCvStore } from "@/store/cvStore";
+import { usePositionStore } from "@/store/PositionStore";
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 
 export default function DebugPage() {
-  const { keywords, rawText, setKeyWords, clearKeyWords, setRawText } = useCvStore()
-  const { positions, setPositions, clearPositions } = usePositionStore()
+  const { applications, keywords, rawText } = useCvStore();
+  const { positions } = usePositionStore();
 
   return (
-    <div className="p-6">
-      <h1 className="text-2xl font-bold mb-4">Debug Stores</h1>
+    <div className="container mx-auto p-6 space-y-10">
+      <h1 className="text-3xl font-bold mb-6">Estado del Store (Debug)</h1>
 
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
-        {/* CV Store Section */}
-        <div className="space-y-4 border p-4 rounded-lg">
-          <h2 className="text-xl font-semibold">CV Store</h2>
-          
-          <div className="flex gap-2">
-            <button
-              onClick={() => setKeyWords(['react', 'typescript', 'zustand'])}
-              className="px-4 py-2 bg-gray-800 text-white rounded hover:bg-gray-700 transition-colors"
-            >
-              Cargar keywords
-            </button>
-
-            <button
-              onClick={clearKeyWords}
-              className="px-4 py-2 bg-gray-300 text-black rounded hover:bg-gray-400 transition-colors"
-            >
-              Limpiar Keywords
-            </button>
+      {/* Seccion Positions */}
+      <section className="space-y-4">
+        <h2 className="text-2xl font-semibold border-b pb-2">Puestos Guardados ({positions.length})</h2>
+        {positions.length === 0 ? (
+          <p className="text-muted-foreground italic">No hay puestos guardados.</p>
+        ) : (
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+            {positions.map((pos, idx) => (
+              <Card key={idx}>
+                <CardHeader className="pb-2">
+                  <CardTitle className="text-lg">{pos}</CardTitle>
+                </CardHeader>
+              </Card>
+            ))}
           </div>
+        )}
+      </section>
 
-          <div className="flex flex-col gap-2">
-            <label className="font-semibold">Raw Text:</label>
-            <textarea
-              value={rawText}
-              onChange={(e) => setRawText(e.target.value)}
-              className="w-full p-2 border rounded dark:bg-neutral-800 dark:border-neutral-700"
-              rows={4}
-              placeholder="Escribe algo aquí para actualizar rawText..."
-            />
+      {/* Seccion Applications */}
+      <section className="space-y-4">
+        <h2 className="text-2xl font-semibold border-b pb-2">Postulaciones ({applications.length})</h2>
+        {applications.length === 0 ? (
+          <p className="text-muted-foreground italic">No hay postulaciones guardadas.</p>
+        ) : (
+          <div className="grid grid-cols-1 gap-4">
+            {applications.map((app) => (
+              <Card key={app.id} className="overflow-hidden">
+                <CardHeader className="bg-muted/50 pb-3">
+                  <div className="flex justify-between items-start">
+                    <div>
+                      <CardTitle className="text-xl">{app.jobTitle}</CardTitle>
+                      <CardDescription>{app.date} — {app.positionId || "Sin puesto asignado"}</CardDescription>
+                    </div>
+                    <span className="text-xs font-mono bg-background border px-2 py-1 rounded">
+                      ID: {app.id}
+                    </span>
+                  </div>
+                </CardHeader>
+                <CardContent className="pt-4 space-y-4">
+                  <div>
+                    <h4 className="text-sm font-semibold mb-1">Palabras Clave Detectadas:</h4>
+                    <div className="flex flex-wrap gap-2">
+                      {app.detectedWords.length > 0 ? (
+                        app.detectedWords.map((word, i) => (
+                          <span key={i} className="px-2 py-1 bg-primary/10 text-primary rounded-md text-sm">
+                            {word}
+                          </span>
+                        ))
+                      ) : (
+                        <span className="text-muted-foreground text-sm">Ninguna</span>
+                      )}
+                    </div>
+                  </div>
+                  
+                  {app.link && (
+                    <div>
+                      <h4 className="text-sm font-semibold mb-1">Link:</h4>
+                      <a href={app.link} target="_blank" rel="noreferrer" className="text-blue-500 hover:underline text-sm truncate block">
+                        {app.link}
+                      </a>
+                    </div>
+                  )}
+
+                  <div>
+                    <h4 className="text-sm font-semibold mb-1">Descripción (Extracto):</h4>
+                    <p className="text-sm text-muted-foreground line-clamp-3 whitespace-pre-line">
+                      {app.jobDescription}
+                    </p>
+                  </div>
+                </CardContent>
+              </Card>
+            ))}
           </div>
+        )}
+      </section>
 
-          <pre className="bg-gray-100 dark:bg-neutral-800 p-4 rounded overflow-auto h-40">
-            {JSON.stringify({ keywords, rawText }, null, 2)}
-          </pre>
-        </div>
-
-        {/* Position Store Section */}
-        <div className="space-y-4 border p-4 rounded-lg">
-          <h2 className="text-xl font-semibold">Position Store</h2>
-          
-          <div className="flex gap-2">
-            <button
-              onClick={() => setPositions(['Frontend Developer', 'Backend Developer', 'Full Stack'])}
-              className="px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700 transition-colors"
-            >
-              Cargar Positions
-            </button>
-
-            <button
-              onClick={clearPositions}
-              className="px-4 py-2 bg-gray-300 text-black rounded hover:bg-gray-400 transition-colors"
-            >
-              Limpiar Positions
-            </button>
+      {/* Seccion Legacy (Keywords & RawText) */}
+      {(keywords.length > 0 || rawText) && (
+        <section className="space-y-4 opacity-75">
+          <h2 className="text-xl font-semibold border-b pb-2">Legacy State (V1)</h2>
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+             <Card>
+                <CardHeader>
+                    <CardTitle>Legacy Keywords</CardTitle>
+                </CardHeader>
+                <CardContent>
+                    <div className="flex flex-wrap gap-2">
+                        {keywords.map((k, i) => <span key={i} className="bg-primary/10 text-primary px-2 py-0.5 rounded text-sm font-medium border border-primary/20">{k}</span>)}
+                    </div>
+                </CardContent>
+             </Card>
+             <Card>
+                <CardHeader>
+                    <CardTitle>Raw Text</CardTitle>
+                </CardHeader>
+                <CardContent>
+                    <div className="text-xs font-mono max-h-96 overflow-y-auto whitespace-pre-wrap bg-muted/30 p-2 rounded border">{rawText}</div>
+                </CardContent>
+             </Card>
           </div>
-
-          <pre className="bg-gray-100 dark:bg-neutral-800 p-4 rounded overflow-auto h-40">
-            {JSON.stringify({ positions }, null, 2)}
-          </pre>
-        </div>
-      </div>
+        </section>
+      )}
     </div>
-  )
+  );
 }

@@ -27,26 +27,25 @@ export function CvDropBox() {
   };
 
   const processFile = async (file: File) => {
-    if (file.name.endsWith('.pdf') || file.name.endsWith('.docx')) {
-      setIsProcessing(true);
-      try {
-        const result = await parseCv(file);
-        setRawText(result.text);
-        setKeyWords(result.keywords);
-        setFileName(file.name);
-        console.log("=== Datos guardados en CV Store ===");
-        console.log("Raw Text (preview):", result.text.substring(0, 100) + "...");
-        console.log("Keywords:", result.keywords);
-        console.log("===================================");
-        toast.success(`CV "${file.name}" procesado correctamente`);
-      } catch (error) {
-        toast.error("Error al procesar el archivo. Asegúrate de que sea un PDF o DOCX válido.");
-        console.error(error);
-      } finally {
-        setIsProcessing(false);
-      }
-    } else {
+    const isPdf = file.name.toLowerCase().endsWith('.pdf')
+    const isDocx = file.name.toLowerCase().endsWith('.docx')
+    if (!isPdf && !isDocx) {
       toast.error("Formato no soportado. Por favor sube un archivo PDF o DOCX.");
+      return
+    }
+    setIsProcessing(true)
+    try {
+      const result = await parseCv(file)
+      setRawText(result.text)
+      setKeyWords(result.keywords)
+      setFileName(file.name)
+      toast.success(`${isPdf ? 'PDF' : 'DOCX'} "${file.name}" procesado correctamente`)
+    } catch (error) {
+      const msg = error instanceof Error ? error.message : "Error al procesar el archivo. Asegúrate de que sea un PDF o DOCX válido."
+      toast.error(msg)
+      console.error(error)
+    } finally {
+      setIsProcessing(false)
     }
   };
 

@@ -46,13 +46,13 @@ export function DesiredPositions() {
     }
 
     return (
-        <section className="p-6 border rounded-lg shadow-sm bg-white dark:bg-neutral-900 max-w-2xl mx-auto my-8">
+        <section className="p-6 border rounded-lg shadow-sm bg-card text-card-foreground max-w-2xl mx-auto my-8">
             <h2 className="text-2xl font-bold mb-6 text-center">Puestos Deseados</h2>
             
             <div className="flex flex-col gap-6">
                 <div className="flex items-center gap-4 justify-center">
                     <label className="font-medium">Cantidad de puestos:</label>
-                    <div className="flex items-center gap-3 bg-background border rounded-md p-1">
+                    <div className="flex items-center gap-3 bg-secondary/50 border rounded-md p-1">
                         <button
                             onClick={() => quantity > 1 && handleQuantityChange(quantity - 1)}
                             disabled={quantity <= 1}
