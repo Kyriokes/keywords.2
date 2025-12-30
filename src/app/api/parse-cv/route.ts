@@ -17,8 +17,8 @@ const extractKeywords = (text: string): string[] => {
 
 // Reconstrucción robusta de texto desde pdf2json (todas las páginas, todos los runs)
 async function parsePdfWithPdf2json(buffer: Buffer): Promise<{ text: string; pagesCount: number }> {
-    const PDFParserMod = await import('pdf2json');
-    const PDFParser = (PDFParserMod as any).default || (PDFParserMod as any);
+    const mod = await import('pdf2json');
+    const PDFParser = (mod as any).default || (mod as any);
     const parser = new PDFParser();
 
     return await new Promise((resolve, reject) => {

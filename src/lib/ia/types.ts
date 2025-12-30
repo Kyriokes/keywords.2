@@ -4,8 +4,8 @@ export interface AiKeyword {
 }
 
 export interface AiResponse {
-    titulo: string;
     palabrasClave: AiKeyword[];
+    puesto?: string;
 }
 
 export interface McpOptions {

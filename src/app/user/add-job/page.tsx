@@ -45,21 +45,20 @@ export default function AddJobPage() {
             // así que funcionará si el usuario tiene Ollama corriendo localmente.
             
             // Para simplificar y no depender de Ollama ya mismo, usaremos el fallback local si falla
-            const aiResponse = await processJobApplication("Oferta Laboral", rawText);
+            const aiResponse = await processJobApplication(
+                "Oferta Laboral",
+                rawText,
+                autoSelect ? { autoSelect: true, candidatePositions: positions } : undefined
+            );
             
             // Intentar extraer link del texto (regex simple)
             const linkMatch = rawText.match(/https?:\/\/[^\s]+/);
             const link = linkMatch ? linkMatch[0] : "";
 
-            let chosenPosition = selectedPosition;
-            if (autoSelect) {
-                const lowered = rawText.toLowerCase();
-                const match = positions.find((p) => lowered.includes(p.toLowerCase()));
-                chosenPosition = match || "otros";
-            }
+            let chosenPosition = autoSelect ? (aiResponse.puesto || "otros") : selectedPosition;
 
             addApplication({
-                jobTitle: aiResponse.titulo || "Oferta Sin Título",
+                jobTitle: chosenPosition || "otros",
                 jobDescription: rawText,
                 detectedWords: aiResponse.palabrasClave.map(k => k.nombre),
                 positionId: chosenPosition,
