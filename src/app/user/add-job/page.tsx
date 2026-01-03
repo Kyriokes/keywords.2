@@ -1,9 +1,10 @@
 "use client";
 
 import { useState } from "react";
-import { useCvStore } from "@/store/cvStore";
+import { useApplicationStore } from "@/store/applicationStore";
 import { usePositionStore } from "@/store/PositionStore";
 import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Label } from "@/components/ui/label";
 import {
@@ -18,10 +19,11 @@ import { toast } from "sonner";
 import { Loader2 } from "lucide-react";
 
 export default function AddJobPage() {
-    const { addApplication } = useCvStore();
+    const { addApplication } = useApplicationStore();
     const { positions } = usePositionStore();
 
     const [rawText, setRawText] = useState("");
+    const [link, setLink] = useState("");
     const [selectedPosition, setSelectedPosition] = useState<string>("");
     const [isProcessing, setIsProcessing] = useState(false);
     const [autoSelect, setAutoSelect] = useState(false);
@@ -31,6 +33,10 @@ export default function AddJobPage() {
             toast.error("Por favor, pega el texto de la oferta.");
             return;
         }
+        if (!link.trim()) {
+            toast.error("Por favor, ingresa el link de la publicación.");
+            return;
+        }
         if (!autoSelect && !selectedPosition) {
             toast.error("Por favor, selecciona un puesto.");
             return;
@@ -38,42 +44,38 @@ export default function AddJobPage() {
 
         setIsProcessing(true);
         try {
-            // Llamamos a la IA (simulada o real según configuración)
-            // En una app real, esto debería ir a un Server Action o API Route para no exponer keys
-            // Por ahora llamamos al controller directamente (asumiendo que corre en cliente o que migraremos a server action)
-            // Nota: El controller de IA que portamos usa fetch a localhost:11434 (Ollama), 
-            // así que funcionará si el usuario tiene Ollama corriendo localmente.
             
-            // Para simplificar y no depender de Ollama ya mismo, usaremos el fallback local si falla
-            const aiResponse = await processJobApplication("Oferta Laboral", rawText);
+            const aiResponse = await processJobApplication(
+                "Oferta Laboral",
+                rawText,
+                autoSelect ? { autoSelect: true, candidatePositions: positions } : undefined
+            );
             
-            // Intentar extraer link del texto (regex simple)
-            const linkMatch = rawText.match(/https?:\/\/[^\s]+/);
-            const link = linkMatch ? linkMatch[0] : "";
-
-            let chosenPosition = selectedPosition;
-            if (autoSelect) {
-                const lowered = rawText.toLowerCase();
-                const match = positions.find((p) => lowered.includes(p.toLowerCase()));
-                chosenPosition = match || "otros";
-            }
+            let chosenPosition = autoSelect ? (aiResponse.puesto || "otros") : selectedPosition;
 
             addApplication({
-                jobTitle: aiResponse.titulo || "Oferta Sin Título",
+                jobTitle: chosenPosition || "otros",
                 jobDescription: rawText,
                 detectedWords: aiResponse.palabrasClave.map(k => k.nombre),
                 positionId: chosenPosition,
-                link: link
+                link: link.trim()
             });
 
             toast.success("¡Oferta procesada y guardada!");
             setRawText("");
+            setLink("");
         } catch (error) {
             console.error(error);
-            if (error instanceof Error && error.message === "Duplicate link") {
-                toast.error("Esta oferta ya existe (link duplicado).");
+            if (error instanceof Error) {
+                if (error.message === "Duplicate link") {
+                    toast.error("Esta oferta ya existe (link duplicado).");
+                } else if (error.message === "AI_SERVICE_UNAVAILABLE") {
+                    toast.error("El servidor de IA no responde. Por favor, aguarda e inténtalo de nuevo mas tarde.");
+                } else {
+                    toast.error("Error al procesar la oferta.");
+                }
             } else {
-                toast.error("Error al procesar la oferta.");
+                toast.error("Error desconocido al procesar la oferta.");
             }
         } finally {
             setIsProcessing(false);
@@ -136,7 +138,17 @@ export default function AddJobPage() {
                 </div>
 
                 <div className="space-y-2">
-                    <Label htmlFor="jobText">Texto de la Oferta (Título + Descripción + Link)</Label>
+                    <Label htmlFor="jobLink">Link de la Publicación</Label>
+                    <Input
+                        id="jobLink"
+                        placeholder="https://..."
+                        value={link}
+                        onChange={(e) => setLink(e.target.value)}
+                    />
+                </div>
+
+                <div className="space-y-2">
+                    <Label htmlFor="jobText">Texto de la Oferta (Título + Descripción)</Label>
                     <Textarea
                         id="jobText"
                         placeholder="Pega aquí todo el contenido de la oferta..."

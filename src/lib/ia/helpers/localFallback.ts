@@ -10,12 +10,14 @@ export function localFallback(combinedText: string): AiResponse {
         .map(([nombre, cantidad]) => ({ nombre, cantidad }))
         .sort((a, b) => b.cantidad - a.cantidad);
 
-    const titleTokens = (words.slice(0, 4) || []).map(
-        (t) => t[0].toUpperCase() + t.slice(1)
-    );
-    const titulo = titleTokens.join(" ") || combinedText.slice(0, 40);
+    return { palabrasClave: arr.slice(0, 30) };
+}
 
-    return { titulo, palabrasClave: arr.slice(0, 30) };
+export function localFallbackAuto(combinedText: string, candidates: string[]): AiResponse {
+    const base = localFallback(combinedText);
+    const lowered = combinedText.toLowerCase();
+    const match = candidates.find((p) => lowered.includes(p.toLowerCase()));
+    return { ...base, puesto: match || "otros" };
 }
 
 export default localFallback;
