@@ -25,12 +25,9 @@ export async function processJobApplication(
         if (!validateAiResponse(parsed)) throw new Error("schema mismatch");
         return parsed;
     } catch (err) {
-        console.warn(
-            "AI controller: MCP call failed or response invalid, using fallback:",
-            err
-        );
-        return opts?.autoSelect
-            ? localFallbackAuto(combined, opts?.candidatePositions || [])
-            : localFallback(combined);
+        console.error("AI controller: Error connecting to AI service:", err);
+        // Re-lanzamos el error para que la UI lo maneje y muestre la alerta al usuario.
+        // Ya no usamos el fallback silencioso.
+        throw new Error("AI_SERVICE_UNAVAILABLE");
     }
 }

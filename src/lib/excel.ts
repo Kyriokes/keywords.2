@@ -1,5 +1,5 @@
 import * as XLSX from "xlsx";
-import { JobApplication } from "@/store/cvStore";
+import { JobApplication } from "@/store/applicationStore";
 
 export function exportToExcel(
     applications: JobApplication[],

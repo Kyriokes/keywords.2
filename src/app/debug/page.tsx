@@ -1,11 +1,13 @@
 "use client";
 
 import { useCvStore } from "@/store/cvStore";
+import { useApplicationStore } from "@/store/applicationStore";
 import { usePositionStore } from "@/store/PositionStore";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 
 export default function DebugPage() {
-  const { applications, keywords, rawText } = useCvStore();
+  const { keywords, rawText } = useCvStore();
+  const { applications } = useApplicationStore();
   const { positions } = usePositionStore();
 
   return (
