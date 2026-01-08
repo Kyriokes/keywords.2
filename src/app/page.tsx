@@ -51,7 +51,7 @@ export default function LandingPage() {
         >
           {/* Option 1: Login (Disabled/Placeholder) */}
           <LandingCard 
-            icon={<Lock className="w-10 h-10 mb-4 text-muted-foreground" />}
+            icon={<Lock className="w-10 h-10 text-muted-foreground" />}
             title="Iniciar Sesión"
             description="Accede a tu cuenta para sincronizar tus datos en la nube."
             onClick={handleLogin}
@@ -61,7 +61,7 @@ export default function LandingPage() {
 
           {/* Option 2: New Account */}
           <LandingCard 
-            icon={<UserPlus className="w-10 h-10 mb-4 text-green-500" />}
+            icon={<UserPlus className="w-10 h-10 text-green-500" />}
             title="Nueva Sesión"
             description="Comienza desde cero. Ideal para una nueva búsqueda."
             onClick={handleNewAccount}
