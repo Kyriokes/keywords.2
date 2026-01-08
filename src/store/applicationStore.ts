@@ -51,6 +51,8 @@ export const useApplicationStore = create<ApplicationState>()(
         }));
       },
 
+      setApplications: (applications) => set({ applications }),
+
       removeApplication: (id) => {
         set((state) => ({
             applications: state.applications.filter((app) => app.id !== id),

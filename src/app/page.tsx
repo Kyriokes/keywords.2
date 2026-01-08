@@ -1,11 +1,12 @@
 'use client';
 
 import { motion } from 'framer-motion';
-import { Lock, UserPlus } from 'lucide-react';
+import { ArrowRight, Lock, UserPlus } from 'lucide-react';
 import { toast } from 'sonner';
 import { LandingCard } from '@/components/LandingCard';
-import { LoadSaveDropzone } from '@/components/LoadSaveDropzone';
 import { containerVariants, itemVariants } from '@/lib/animations';
+import { Button } from '@/components/ui/button';
+import Link from 'next/link';
 
 export default function LandingPage() {
 
@@ -34,12 +35,19 @@ export default function LandingPage() {
             Tu asistente inteligente para la búsqueda laboral. Gestiona tus postulaciones,
             analiza palabras clave con IA y obtén estadísticas relevantes para optimizar tu perfil.
           </p>
+          <div className="pt-4 flex justify-center gap-4">
+            <Link href="/user/dashboard">
+                <Button size="lg" className="gap-2">
+                    Ir al Panel de Control <ArrowRight className="w-4 h-4" />
+                </Button>
+            </Link>
+          </div>
         </motion.div>
 
         {/* Options Grid */}
         <motion.div 
           variants={itemVariants} 
-          className="grid grid-cols-1 md:grid-cols-3 gap-6 w-full"
+          className="grid grid-cols-1 md:grid-cols-2 gap-6 w-full max-w-2xl mx-auto"
         >
           {/* Option 1: Login (Disabled/Placeholder) */}
           <LandingCard 
@@ -51,10 +59,7 @@ export default function LandingPage() {
             badge="Próximamente"
           />
 
-          {/* Option 2: Load Save File (Dropzone) */}
-          <LoadSaveDropzone />
-
-          {/* Option 3: New Account */}
+          {/* Option 2: New Account */}
           <LandingCard 
             icon={<UserPlus className="w-10 h-10 mb-4 text-green-500" />}
             title="Nueva Sesión"

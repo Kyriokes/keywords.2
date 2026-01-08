@@ -78,8 +78,8 @@ export default function DebugPage() {
                   )}
 
                   <div>
-                    <h4 className="text-sm font-semibold mb-1">Descripción (Extracto):</h4>
-                    <p className="text-sm text-muted-foreground line-clamp-3 whitespace-pre-line">
+                    <h4 className="text-sm font-semibold mb-1">Descripción:</h4>
+                    <p className="text-sm text-muted-foreground whitespace-pre-line">
                       {app.jobDescription}
                     </p>
                   </div>
