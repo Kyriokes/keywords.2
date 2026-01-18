@@ -7,11 +7,35 @@ import { LandingCard } from '@/components/LandingCard';
 import { containerVariants, itemVariants } from '@/lib/animations';
 import { Button } from '@/components/ui/button';
 import Link from 'next/link';
+import { useRouter } from 'next/navigation';
+import { useEffect, useState } from 'react';
 
 export default function LandingPage() {
+  const router = useRouter();
+  const [isLoggedIn, setIsLoggedIn] = useState(false);
+  const [isLoading, setIsLoading] = useState(true);
+
+  useEffect(() => {
+    checkSession();
+  }, []);
+
+  const checkSession = async () => {
+    try {
+      const res = await fetch('/api/auth/status');
+      setIsLoggedIn(res.ok);
+    } catch (e) {
+      setIsLoggedIn(false);
+    } finally {
+      setIsLoading(false);
+    }
+  };
 
   const handleLogin = () => {
-    toast.info("El inicio de sesión estará disponible próximamente.");
+    if (isLoggedIn) {
+      router.push('/user/dashboard');
+    } else {
+      router.push('/login');
+    }
   };
 
   const handleNewAccount = () => {
@@ -36,11 +60,23 @@ export default function LandingPage() {
             analiza palabras clave con IA y obtén estadísticas relevantes para optimizar tu perfil.
           </p>
           <div className="pt-4 flex justify-center gap-4">
-            <Link href="/user/dashboard">
+            {isLoading ? (
+              <Button size="lg" disabled className="gap-2">
+                Cargando...
+              </Button>
+            ) : isLoggedIn ? (
+              <Link href="/user/dashboard">
                 <Button size="lg" className="gap-2">
-                    Ir al Panel de Control <ArrowRight className="w-4 h-4" />
+                  Ir al Panel de Control <ArrowRight className="w-4 h-4" />
                 </Button>
-            </Link>
+              </Link>
+            ) : (
+              <Link href="/login">
+                <Button size="lg" className="gap-2">
+                  Iniciar Sesión <ArrowRight className="w-4 h-4" />
+                </Button>
+              </Link>
+            )}
           </div>
         </motion.div>
 
@@ -49,14 +85,12 @@ export default function LandingPage() {
           variants={itemVariants} 
           className="grid grid-cols-1 md:grid-cols-2 gap-6 w-full max-w-2xl mx-auto"
         >
-          {/* Option 1: Login (Disabled/Placeholder) */}
+          {/* Option 1: Login / Dashboard */}
           <LandingCard 
-            icon={<Lock className="w-10 h-10 text-muted-foreground" />}
-            title="Iniciar Sesión"
-            description="Accede a tu cuenta para sincronizar tus datos en la nube."
+            icon={<Lock className="w-10 h-10 text-primary" />}
+            title={isLoggedIn ? "Panel de Control" : "Iniciar Sesión"}
+            description={isLoggedIn ? "Gestiona tus postulaciones y perfil." : "Accede a tu cuenta para sincronizar tus datos."}
             onClick={handleLogin}
-            disabled={true}
-            badge="Próximamente"
           />
 
           {/* Option 2: New Account */}

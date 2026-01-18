@@ -1,3 +1,5 @@
+'use server';
+
 import { postToMcp } from "./client";
 import tryParseJsonFromText from "./helpers/tryParseJsonFromText";
 import validateAiResponse from "./helpers/validateAiResponse";
