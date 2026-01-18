@@ -18,6 +18,7 @@ interface ApplicationState {
   addApplication: (appData: Omit<JobApplication, 'id' | 'date' | 'detectedWords'> & { detectedWords?: string[] }) => void;
   removeApplication: (id: string) => void;
   clearAllApplications: () => void;
+  setApplications: (applications: JobApplication[]) => void;
 }
 
 export const useApplicationStore = create<ApplicationState>()(
