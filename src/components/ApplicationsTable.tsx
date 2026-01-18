@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useMemo } from "react";
 import {
   ColumnDef,
   ColumnFiltersState,
@@ -22,7 +22,8 @@ import {
 } from "@/components/ui/table";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { ArrowUpDown, ExternalLink, Trash2 } from "lucide-react";
+import { Card, CardContent, CardDescription, CardHeader, CardTitle, CardFooter } from "@/components/ui/card";
+import { ArrowUpDown, ExternalLink, Trash2, X, Eye } from "lucide-react";
 import { JobApplication, useApplicationStore } from "@/store/applicationStore";
 import { toast } from "sonner";
 
@@ -30,6 +31,15 @@ export function ApplicationsTable() {
   const { applications, removeApplication } = useApplicationStore();
   const [sorting, setSorting] = useState<SortingState>([]);
   const [columnFilters, setColumnFilters] = useState<ColumnFiltersState>([]);
+  const [globalFilter, setGlobalFilter] = useState("");
+  const [selectedApp, setSelectedApp] = useState<JobApplication | null>(null);
+
+  const suggestions = useMemo(() => {
+    if (!applications) return [];
+    const titles = applications.map((a) => a.jobTitle);
+    const keywords = applications.flatMap((a) => a.detectedWords || []);
+    return Array.from(new Set([...titles, ...keywords])).sort();
+  }, [applications]);
 
   const handleDelete = (id: string) => {
       removeApplication(id);
@@ -68,11 +78,19 @@ export function ApplicationsTable() {
       cell: ({ row }) => <div className="font-medium">{row.getValue("jobTitle")}</div>,
     },
     {
-        accessorKey: "positionId",
-        header: "Puesto Objetivo",
+        id: "description",
+        header: "Descripción",
         cell: ({ row }) => {
-            const pos = row.getValue("positionId") as string;
-            return <div className="capitalize">{pos || "Otros"}</div>
+            return (
+                <Button 
+                    variant="outline" 
+                    size="sm" 
+                    className="flex items-center gap-2"
+                    onClick={() => setSelectedApp(row.original)}
+                >
+                    <Eye className="w-4 h-4" /> Ver detalle
+                </Button>
+            )
         }
     },
     {
@@ -117,6 +135,14 @@ export function ApplicationsTable() {
     columns,
     onSortingChange: setSorting,
     onColumnFiltersChange: setColumnFilters,
+    onGlobalFilterChange: setGlobalFilter,
+    globalFilterFn: (row, columnId, filterValue) => {
+      const search = filterValue.toLowerCase();
+      const app = row.original as JobApplication;
+      const title = app.jobTitle?.toLowerCase() || "";
+      const keywords = (app.detectedWords || []).join(" ").toLowerCase();
+      return title.includes(search) || keywords.includes(search);
+    },
     getCoreRowModel: getCoreRowModel(),
     getPaginationRowModel: getPaginationRowModel(),
     getSortedRowModel: getSortedRowModel(),
@@ -124,6 +150,7 @@ export function ApplicationsTable() {
     state: {
       sorting,
       columnFilters,
+      globalFilter,
     },
   });
 
@@ -131,13 +158,17 @@ export function ApplicationsTable() {
     <div className="w-full space-y-4">
       <div className="flex items-center py-4">
         <Input
-          placeholder="Filtrar por título..."
-          value={(table.getColumn("jobTitle")?.getFilterValue() as string) ?? ""}
-          onChange={(event) =>
-            table.getColumn("jobTitle")?.setFilterValue(event.target.value)
-          }
+          placeholder="Filtrar por título o palabra clave..."
+          value={globalFilter ?? ""}
+          onChange={(event) => setGlobalFilter(event.target.value)}
           className="max-w-sm"
+          list="suggestions-list"
         />
+        <datalist id="suggestions-list">
+          {suggestions.map((item, index) => (
+            <option key={index} value={item} />
+          ))}
+        </datalist>
       </div>
       <div className="rounded-md border">
         <Table>
@@ -212,6 +243,56 @@ export function ApplicationsTable() {
           </Button>
         </div>
       </div>
+
+      {selectedApp && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4 animate-in fade-in duration-200">
+          <Card className="w-full max-w-2xl max-h-[90vh] overflow-y-auto relative bg-background shadow-lg">
+            <Button
+              variant="ghost"
+              size="icon"
+              className="absolute right-4 top-4"
+              onClick={() => setSelectedApp(null)}
+            >
+              <X className="h-4 w-4" />
+            </Button>
+            <CardHeader>
+              <CardTitle>{selectedApp.jobTitle}</CardTitle>
+              <CardDescription>
+                Postulado el {selectedApp.date}
+                {selectedApp.link && (
+                    <a href={selectedApp.link} target="_blank" rel="noreferrer" className="ml-2 inline-flex items-center text-blue-500 hover:underline">
+                        Ver oferta original <ExternalLink className="ml-1 w-3 h-3" />
+                    </a>
+                )}
+              </CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              <div>
+                <h4 className="font-semibold mb-2">Descripción del Puesto</h4>
+                <div className="text-sm text-muted-foreground whitespace-pre-wrap">
+                  {selectedApp.jobDescription || "Sin descripción disponible."}
+                </div>
+              </div>
+              
+              {selectedApp.detectedWords && selectedApp.detectedWords.length > 0 && (
+                <div>
+                  <h4 className="font-semibold mb-2">Palabras Clave Detectadas</h4>
+                  <div className="flex flex-wrap gap-2">
+                    {selectedApp.detectedWords.map((word, i) => (
+                      <span key={i} className="px-2 py-1 bg-secondary text-secondary-foreground rounded-md text-xs font-medium">
+                        {word}
+                      </span>
+                    ))}
+                  </div>
+                </div>
+              )}
+            </CardContent>
+            <CardFooter className="flex justify-end">
+                <Button onClick={() => setSelectedApp(null)}>Cerrar</Button>
+            </CardFooter>
+          </Card>
+        </div>
+      )}
     </div>
   );
 }

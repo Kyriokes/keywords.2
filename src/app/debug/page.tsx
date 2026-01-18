@@ -4,15 +4,30 @@ import { useCvStore } from "@/store/cvStore";
 import { useApplicationStore } from "@/store/applicationStore";
 import { usePositionStore } from "@/store/PositionStore";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { Button } from "@/components/ui/button";
 
 export default function DebugPage() {
   const { keywords, rawText } = useCvStore();
-  const { applications } = useApplicationStore();
-  const { positions } = usePositionStore();
+  const { applications, clearAllApplications } = useApplicationStore();
+  const { positions, clearPositions } = usePositionStore();
 
   return (
     <div className="container mx-auto p-6 space-y-10">
-      <h1 className="text-3xl font-bold mb-6">Estado del Store (Debug)</h1>
+      <div className="flex justify-between items-center mb-6">
+        <h1 className="text-3xl font-bold">Estado del Store (Debug)</h1>
+        <div className="flex gap-2">
+            <Button variant="destructive" onClick={() => {
+                if(confirm("¿Seguro que quieres borrar TODAS las postulaciones?")) clearAllApplications();
+            }}>
+                Borrar Postulaciones
+            </Button>
+            <Button variant="outline" onClick={() => {
+                 if(confirm("¿Seguro que quieres borrar TODOS los puestos?")) clearPositions();
+            }}>
+                Borrar Puestos
+            </Button>
+        </div>
+      </div>
 
       {/* Seccion Positions */}
       <section className="space-y-4">

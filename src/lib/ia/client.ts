@@ -7,7 +7,7 @@ export async function postToMcp(
     opts?: McpOptions
 ): Promise<string> {
     const url = opts?.url || DEFAULT_URL;
-    const model = opts?.model || "llama-3.1";
+    const model = opts?.model || "llama3.1";
 
     const body = {
         model,
