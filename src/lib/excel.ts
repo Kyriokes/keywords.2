@@ -43,6 +43,10 @@ export function exportToExcel(
               }))
             : [{ words: "", "raw text": cvRawText || "" }];
     const wsCv = XLSX.utils.json_to_sheet(cvRows);
+    wsCv["!cols"] = [
+        { wch: 30 }, // words
+        { wch: 100 } // raw text
+    ];
     XLSX.utils.book_append_sheet(wb, wsCv, "CV");
 
     XLSX.writeFile(wb, `Keywords_${new Date().toISOString().split("T")[0]}.xlsx`);

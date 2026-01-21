@@ -7,7 +7,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Button } from "@/components/ui/button";
 
 export default function DebugPage() {
-  const { keywords, rawText } = useCvStore();
+  const { cvs, activeCvId } = useCvStore();
   const { applications, clearAllApplications } = useApplicationStore();
   const { positions, clearPositions } = usePositionStore();
 
@@ -105,32 +105,47 @@ export default function DebugPage() {
         )}
       </section>
 
-      {/* Seccion Legacy (Keywords & RawText) */}
-      {(keywords.length > 0 || rawText) && (
-        <section className="space-y-4 opacity-75">
-          <h2 className="text-xl font-semibold border-b pb-2">Legacy State (V1)</h2>
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-             <Card>
-                <CardHeader>
-                    <CardTitle>Legacy Keywords</CardTitle>
-                </CardHeader>
-                <CardContent>
-                    <div className="flex flex-wrap gap-2">
-                        {keywords.map((k, i) => <span key={i} className="bg-primary/10 text-primary px-2 py-0.5 rounded text-sm font-medium border border-primary/20">{k}</span>)}
-                    </div>
-                </CardContent>
-             </Card>
-             <Card>
-                <CardHeader>
-                    <CardTitle>Raw Text</CardTitle>
-                </CardHeader>
-                <CardContent>
-                    <div className="text-xs font-mono max-h-96 overflow-y-auto whitespace-pre-wrap bg-muted/30 p-2 rounded border">{rawText}</div>
-                </CardContent>
-             </Card>
-          </div>
-        </section>
-      )}
+      {/* Seccion CVs (Nueva Estructura) */}
+      <section className="space-y-4">
+        <h2 className="text-2xl font-semibold border-b pb-2">CVs Cargados ({cvs.length})</h2>
+        {cvs.length === 0 ? (
+             <p className="text-muted-foreground italic">No hay CVs cargados.</p>
+        ) : (
+            <div className="space-y-6">
+                {cvs.map((cv) => (
+                     <Card key={cv.id} className={activeCvId === cv.id ? "border-primary" : ""}>
+                        <CardHeader>
+                            <div className="flex justify-between items-center">
+                                <CardTitle>{cv.name} {activeCvId === cv.id && <span className="text-xs bg-primary text-primary-foreground px-2 py-0.5 rounded ml-2">Activo</span>}</CardTitle>
+                                <span className="text-xs text-muted-foreground">ID: {cv.id}</span>
+                            </div>
+                            <CardDescription>
+                                Subido el: {new Date(cv.uploadDate).toLocaleString()}
+                            </CardDescription>
+                        </CardHeader>
+                        <CardContent className="space-y-4">
+                            <div>
+                                <h4 className="text-sm font-semibold mb-1">Keywords ({cv.keywords.length}):</h4>
+                                <div className="flex flex-wrap gap-2">
+                                    {cv.keywords.map((k, i) => (
+                                        <span key={i} className="bg-primary/10 text-primary px-2 py-0.5 rounded text-sm font-medium border border-primary/20">
+                                            {k}
+                                        </span>
+                                    ))}
+                                </div>
+                            </div>
+                            <div>
+                                <h4 className="text-sm font-semibold mb-1">Raw Text Preview:</h4>
+                                <div className="text-xs font-mono whitespace-pre-wrap bg-muted/30 p-2 rounded border">
+                                    {cv.text}
+                                </div>
+                            </div>
+                        </CardContent>
+                     </Card>
+                ))}
+            </div>
+        )}
+      </section>
     </div>
   );
 }

@@ -46,8 +46,15 @@ export function LoadSaveDropzone({ onFileSelected }: LoadSaveDropzoneProps) {
       
       // Update stores
       useApplicationStore.getState().setApplications(data.applications);
-      useCvStore.getState().setKeyWords(data.cvKeywords);
-      useCvStore.getState().setRawText(data.cvRawText);
+      
+      // Import CV if exists
+      if (data.cvKeywords.length > 0 || data.cvRawText) {
+          useCvStore.getState().addCv({
+              name: `Importado (${new Date().toLocaleDateString()})`,
+              keywords: data.cvKeywords,
+              text: data.cvRawText
+          });
+      }
 
       toast.success(`Datos cargados exitosamente: ${data.applications.length} postulaciones.`);
       onFileSelected?.(file);
@@ -88,7 +95,11 @@ export function LoadSaveDropzone({ onFileSelected }: LoadSaveDropzoneProps) {
     e.stopPropagation(); // Prevent triggering the dropzone click
     try {
       const { applications } = useApplicationStore.getState();
-      const { keywords, rawText } = useCvStore.getState();
+      const { cvs, activeCvId } = useCvStore.getState();
+      
+      const activeCv = cvs.find(c => c.id === activeCvId) || cvs[0];
+      const keywords = activeCv?.keywords || [];
+      const rawText = activeCv?.text || '';
       
       if (applications.length === 0 && keywords.length === 0 && !rawText) {
         toast.warning("No hay datos para exportar.");
