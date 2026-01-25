@@ -12,9 +12,10 @@ export function CvDropBox() {
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [isDragging, setIsDragging] = useState(false);
   const [isProcessing, setIsProcessing] = useState(false);
-  const [fileName, setFileName] = useState<string | null>(null);
-  const setKeyWords = useCvStore((state) => state.setKeyWords);
-  const setRawText = useCvStore((state) => state.setRawText);
+  // We don't need persistent fileName state anymore since we add to a list, 
+  // but we can use it to show temporary success if we want. 
+  // For now, let's just reset it to allow multiple uploads easily.
+  const addCv = useCvStore((state) => state.addCv);
 
   const handleDragOver = (e: React.DragEvent) => {
     e.preventDefault();
@@ -36,16 +37,22 @@ export function CvDropBox() {
     setIsProcessing(true)
     try {
       const result = await parseCv(file)
-      setRawText(result.text)
-      setKeyWords(result.keywords)
-      setFileName(file.name)
-      toast.success(`${isPdf ? 'PDF' : 'DOCX'} "${file.name}" procesado correctamente`)
+      
+      addCv({
+        name: file.name,
+        keywords: result.keywords,
+        text: result.text
+      });
+      
+      toast.success(`${isPdf ? 'PDF' : 'DOCX'} "${file.name}" agregado correctamente`)
     } catch (error) {
       const msg = error instanceof Error ? error.message : "Error al procesar el archivo. Asegúrate de que sea un PDF o DOCX válido."
       toast.error(msg)
       console.error(error)
     } finally {
       setIsProcessing(false)
+      // Reset input so same file can be selected again if needed (though unlikely)
+      if (fileInputRef.current) fileInputRef.current.value = '';
     }
   };
 
@@ -83,18 +90,15 @@ export function CvDropBox() {
           "relative flex flex-col items-center justify-center p-8 rounded-2xl border-2 border-dashed transition-all duration-300 text-center h-64 cursor-pointer",
           isDragging 
             ? "border-primary bg-primary/10 scale-105" 
-            : "border-muted-foreground/30 bg-card hover:border-primary/50 hover:shadow-xl",
-          fileName && "border-green-500/50 bg-green-500/5"
+            : "border-muted-foreground/30 bg-card hover:border-primary/50 hover:shadow-xl"
         )}
       >
         <div className={cn(
           "p-4 rounded-full shadow-sm mb-4 transition-colors",
-          isDragging ? "bg-primary/20" : fileName ? "bg-green-100" : "bg-background"
+          isDragging ? "bg-primary/20" : "bg-background"
         )}>
           {isProcessing ? (
             <Loader2 className="w-10 h-10 text-primary animate-spin" />
-          ) : fileName ? (
-            <CheckCircle className="w-10 h-10 text-green-500" />
           ) : (
             <Upload className={cn(
               "w-10 h-10",
@@ -104,21 +108,19 @@ export function CvDropBox() {
         </div>
         
         <h3 className="text-xl font-semibold mb-2">
-          {isProcessing ? "Procesando..." : fileName ? "CV Cargado" : "Sube tu CV"}
+          {isProcessing ? "Procesando..." : "Sube tu CV"}
         </h3>
         
         <p className="text-sm text-muted-foreground max-w-[200px]">
-          {fileName 
-            ? fileName 
-            : isDragging 
+          {isDragging 
               ? "¡Suelta el archivo aquí!" 
               : "Arrastra tu PDF o DOCX aquí, o haz click para buscar"}
         </p>
 
-        {fileName && (
-          <div className="mt-4 text-xs text-green-600 font-medium bg-green-100 px-3 py-1 rounded-full">
-            Listo para analizar
-          </div>
+        {!isProcessing && !isDragging && (
+           <p className="text-xs text-muted-foreground mt-4">
+             Puedes cargar múltiples versiones
+           </p>
         )}
       </motion.div>
       <input 

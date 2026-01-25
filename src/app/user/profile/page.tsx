@@ -1,6 +1,7 @@
 "use client";
 
 import { CvDropBox } from "@/components/CvDropBox";
+import { CvList } from "@/components/CvList";
 import { DesiredPositions } from "@/components/DesiredPositions";
 
 export default function ProfilePage() {
@@ -17,6 +18,7 @@ export default function ProfilePage() {
                         Gestiona el currículum base que usaremos para analizar las ofertas.
                     </p>
                     <CvDropBox />
+                    <CvList />
                 </div>
                 
                 <div className="space-y-6">

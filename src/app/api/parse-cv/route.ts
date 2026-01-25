@@ -4,11 +4,13 @@ export const dynamic = 'force-dynamic';
 import { NextRequest, NextResponse } from 'next/server';
 import mammoth from 'mammoth';
 
-// Función helper para extraer keywords (misma lógica que antes)
+// Función helper para extraer keywords (lógica mejorada para acentos)
 const extractKeywords = (text: string): string[] => {
     const words = text
         .toLowerCase()
-        .replace(/[^\w\s]/g, '')
+        // Permitimos letras latinas, números y espacios
+        // \u00C0-\u00FF incluye á, é, í, ó, ú, ñ, ü, etc.
+        .replace(/[^a-zA-Z0-9\u00C0-\u00FF\s]/g, '')
         .split(/\s+/)
         .filter(word => word.length > 3);
 
