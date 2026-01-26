@@ -10,6 +10,7 @@ export interface ProviderState {
 
 const DEFAULT_SCORE = 100;
 const MIN_SCORE = 10;
+const MAX_SCORE = 200;
 const REWARD_ACCEPT = 5;
 const PENALTY_REJECT = 10;
 const PENALTY_ERROR = 30;
@@ -56,16 +57,25 @@ class ProviderManager {
 
         if (available.length === 0) return null;
 
-        // Weighted Random Selection
-        const totalScore = available.reduce((sum, id) => sum + this.getOrCreate(id).score, 0);
-        let random = Math.random() * totalScore;
-        
-        for (const id of available) {
+        // Normalización de Pesos (1x - 2x Ratio)
+        // Mapeamos el score [10, 200] a un peso [1.0, 2.0]
+        // Esto garantiza que el proveedor favorito tenga máximo el doble de probabilidad que el menos favorito.
+        const weightedCandidates = available.map(id => {
             const score = this.getOrCreate(id).score;
-            if (random < score) {
-                return id;
+            // Formula: 1 + (Score - Min) / (Max - Min)
+            const weight = 1 + ((score - MIN_SCORE) / (MAX_SCORE - MIN_SCORE));
+            return { id, weight };
+        });
+
+        // Weighted Random Selection
+        const totalWeight = weightedCandidates.reduce((sum, item) => sum + item.weight, 0);
+        let random = Math.random() * totalWeight;
+        
+        for (const item of weightedCandidates) {
+            if (random < item.weight) {
+                return item.id;
             }
-            random -= score;
+            random -= item.weight;
         }
 
         return available[0]; // Fallback
@@ -74,7 +84,7 @@ class ProviderManager {
     public reportSuccess(id: string) {
         const state = this.getOrCreate(id);
         state.totalAccepted++;
-        state.score = Math.min(state.score + REWARD_ACCEPT, 200); // Cap at 200
+        state.score = Math.min(state.score + REWARD_ACCEPT, MAX_SCORE);
     }
 
     public reportRejection(id: string) {
