@@ -9,22 +9,32 @@ export interface JobApplication {
   jobDescription: string;
   detectedWords: string[];
   positionId?: string;
+  provider?: string;
+}
+
+export interface PendingApplication {
+  data: Omit<JobApplication, 'id' | 'date'>;
+  providerUsed: string;
+  excludedProviders: string[];
 }
 
 interface ApplicationState {
   applications: JobApplication[];
+  pendingApplication: PendingApplication | null;
 
   // Actions
-  addApplication: (appData: Omit<JobApplication, 'id' | 'date' | 'detectedWords'> & { detectedWords?: string[] }) => void;
+  addApplication: (appData: Omit<JobApplication, 'id' | 'date' | 'detectedWords'> & { detectedWords?: string[], provider?: string }) => void;
   removeApplication: (id: string) => void;
   clearAllApplications: () => void;
   setApplications: (applications: JobApplication[]) => void;
+  setPendingApplication: (app: PendingApplication | null) => void;
 }
 
 export const useApplicationStore = create<ApplicationState>()(
   persist(
     (set, get) => ({
       applications: [],
+      pendingApplication: null,
 
       addApplication: (appData) => {
         const state = get();
@@ -53,6 +63,8 @@ export const useApplicationStore = create<ApplicationState>()(
       },
 
       setApplications: (applications) => set({ applications }),
+      
+      setPendingApplication: (pendingApplication) => set({ pendingApplication }),
 
       removeApplication: (id) => {
         set((state) => ({

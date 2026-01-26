@@ -3,6 +3,7 @@
 import { useState } from "react";
 import { useApplicationStore } from "@/store/applicationStore";
 import { usePositionStore } from "@/store/PositionStore";
+import { useStatsStore } from "@/store/statsStore";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
@@ -19,8 +20,9 @@ import { toast } from "sonner";
 import { Loader2 } from "lucide-react";
 
 export default function AddJobPage() {
-    const { addApplication } = useApplicationStore();
+    const { setPendingApplication } = useApplicationStore();
     const { positions } = usePositionStore();
+    const { logGeneration } = useStatsStore();
 
     const [rawText, setRawText] = useState("");
     const [link, setLink] = useState("");
@@ -51,17 +53,26 @@ export default function AddJobPage() {
                 autoSelect ? { autoSelect: true, candidatePositions: positions } : undefined
             );
             
-            let chosenPosition = autoSelect ? (aiResponse.puesto || "otros") : selectedPosition;
+            const chosenPosition = autoSelect ? (aiResponse.puesto || "otros") : selectedPosition;
+            const provider = aiResponse.provider || "unknown";
 
-            addApplication({
-                jobTitle: chosenPosition || "otros",
-                jobDescription: rawText,
-                detectedWords: aiResponse.palabrasClave.map(k => k.nombre),
-                positionId: chosenPosition,
-                link: link.trim()
+            // Log stats
+            logGeneration(provider);
+
+            // Set pending instead of adding directly
+            setPendingApplication({
+                data: {
+                    jobTitle: chosenPosition || "otros",
+                    jobDescription: rawText,
+                    detectedWords: aiResponse.palabrasClave.map(k => k.nombre),
+                    positionId: chosenPosition,
+                    link: link.trim()
+                },
+                providerUsed: provider,
+                excludedProviders: []
             });
 
-            toast.success("¡Oferta procesada y guardada!");
+            toast.info("Oferta procesada. Por favor revisa el resultado.");
             setRawText("");
             setLink("");
         } catch (error) {

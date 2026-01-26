@@ -3,14 +3,20 @@
 import { postToMcp } from "./client";
 import tryParseJsonFromText from "./helpers/tryParseJsonFromText";
 import validateAiResponse from "./helpers/validateAiResponse";
-import localFallback, { localFallbackAuto } from "./helpers/localFallback";
 import { buildPromptManual, buildPromptAuto } from "./helpers/buildPrompt";
 import type { AiResponse } from "./types";
 
 export async function processJobApplication(
     jobTitle: string,
     jobDescription: string,
-    opts?: { mcpUrl?: string; model?: string; timeoutMs?: number; autoSelect?: boolean; candidatePositions?: string[] }
+    opts?: { 
+        mcpUrl?: string; 
+        model?: string; 
+        timeoutMs?: number; 
+        autoSelect?: boolean; 
+        candidatePositions?: string[];
+        excludeProviders?: string[];
+    }
 ): Promise<AiResponse> {
     const combined = `${jobTitle}\n\n${jobDescription}`;
     const prompt = opts?.autoSelect
@@ -18,13 +24,18 @@ export async function processJobApplication(
         : buildPromptManual(combined);
 
     try {
-        const raw = await postToMcp(prompt, {
+        const { text: raw, providerId } = await postToMcp(prompt, {
             url: opts?.mcpUrl,
             model: opts?.model,
             timeoutMs: opts?.timeoutMs,
+            excludeProviders: opts?.excludeProviders
         });
         const parsed = tryParseJsonFromText(raw);
         if (!validateAiResponse(parsed)) throw new Error("schema mismatch");
+        
+        // Attach provider info
+        parsed.provider = providerId;
+        
         return parsed;
     } catch (err) {
         console.error("AI controller: Error connecting to AI service:", err);

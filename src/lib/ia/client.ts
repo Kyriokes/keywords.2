@@ -1,15 +1,50 @@
 import { getAiProvider } from "./providers/factory";
 import type { McpOptions } from "./types";
+import { providerManager } from "./providerManager";
 
 export async function postToMcp(
     prompt: string,
     opts?: McpOptions
-): Promise<string> {
-    // Utilizar el proveedor configurado (Grok o Ollama)
-    const provider = getAiProvider();
-    
-    // Si se necesitara pasar opciones específicas (como timeout), 
-    // se podrían implementar en la interfaz AiProvider más adelante.
-    // Por ahora, delegamos la generación al proveedor.
-    return provider.generate(prompt);
+): Promise<{ text: string; providerId: string }> {
+    const maxRetries = 5;
+    let attempts = 0;
+    const currentExcludes = [...(opts?.excludeProviders || [])];
+
+    while (attempts < maxRetries) {
+        // 1. Get Provider
+        const provider = getAiProvider(currentExcludes);
+        const pid = provider.id;
+
+        try {
+            console.log(`[Client] Attempt ${attempts + 1}: Using provider ${pid}`);
+            
+            // 2. Generate
+            const text = await provider.generate(prompt);
+            
+            // 3. Success (Technical)
+            // Note: Business logic rejection happens later via API
+            providerManager.logGeneration(pid);
+            
+            return { text, providerId: pid };
+
+        } catch (error) {
+            console.error(`[Client] Provider ${pid} failed:`, error);
+            
+            // 4. Failure
+            providerManager.reportFailure(pid);
+            currentExcludes.push(pid);
+            
+            // If the fallback (Ollama) failed, we are likely done, unless we want to try another fallback?
+            // But getAiProvider returns Ollama as the *last* resort.
+            // If we are already using Ollama and it failed, we can stop or try to see if factory gives something else (unlikely).
+            if (pid === 'ollama') {
+                console.error("[Client] Fallback provider (Ollama) failed. Aborting.");
+                throw error;
+            }
+        }
+        
+        attempts++;
+    }
+
+    throw new Error("All AI providers failed.");
 }
