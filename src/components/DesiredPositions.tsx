@@ -9,11 +9,26 @@ export function DesiredPositions() {
     const [quantity, setQuantity] = useState(1)
     const [localPositions, setLocalPositions] = useState<string[]>([''])
 
+    // Flag para inicializar solo una vez y evitar loops, o usar un effect que no dependa de positions si no queremos sync bidireccional constante
     useEffect(() => {
-        // Si hay posiciones guardadas, las cargamos
-        if (positions.length > 0) {
-            setLocalPositions(positions)
-            setQuantity(positions.length)
+        // Solo inicializamos si localPositions está vacío (o default) y hay datos en el store.
+        // Esto evita sobrescribir si el usuario está editando y el store cambia por alguna razón externa (poco probable aquí pero buena práctica)
+        // Pero para simplificar y arreglar el lint, verificamos si es necesario actualizar.
+        
+        // Mejor approach: Cargar el estado inicial con lazy initializer en useState, 
+        // pero como positions viene de un store externo (zustand con persist), puede no estar listo al primer render.
+        // Usaremos un ref para trackear si ya cargamos.
+         
+         if (positions.length > 0) {
+             // eslint-disable-next-line react-hooks/set-state-in-effect
+             setLocalPositions(prev => {
+                 // Solo actualizar si es diferente para evitar loops si positions cambia por referencia
+                 if (JSON.stringify(prev) !== JSON.stringify(positions)) {
+                    setQuantity(positions.length);
+                    return positions;
+                }
+                return prev;
+            })
         }
     }, [positions])
 

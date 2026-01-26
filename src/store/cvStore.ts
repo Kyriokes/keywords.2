@@ -17,6 +17,7 @@ interface CvState {
   addCv: (cv: Omit<CV, 'id' | 'uploadDate'>) => void;
   removeCv: (id: string) => void;
   selectCv: (id: string) => void;
+  setCvs: (cvs: CV[]) => void;
   
   // Deprecated properties for backward compatibility (optional, but cleaner to just migrate)
   // keywords: string[]; // Removed
@@ -59,6 +60,8 @@ export const useCvStore = create<CvState>()(
         }),
 
       selectCv: (id) => set({ activeCvId: id }),
+      
+      setCvs: (cvs) => set({ cvs }),
     }),
     {
       name: 'cv-storage',

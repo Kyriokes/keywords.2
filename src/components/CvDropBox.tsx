@@ -1,7 +1,7 @@
 'use client';
 
 import { motion } from 'framer-motion';
-import { Upload, CheckCircle, Loader2 } from 'lucide-react';
+import { Upload, Loader2 } from 'lucide-react';
 import { useRef, useState } from 'react';
 import { toast } from 'sonner';
 import { cn } from '@/lib/utils';

@@ -4,6 +4,7 @@ import "./globals.css";
 import { Navbar } from "@/components/Navbar";
 import { Footer } from "@/components/Footer";
 import { Toaster } from "sonner";
+import { ReviewOverlayWrapper } from "@/components/ReviewOverlayWrapper";
 
 const geistSans = Geist({
   variable: "--font-geist-sans",
@@ -32,6 +33,7 @@ export default function RootLayout({
         suppressHydrationWarning
       >
         <Toaster />
+        <ReviewOverlayWrapper />
         <Navbar />
         <main className="min-h-screen">{children}</main>
         <Footer />

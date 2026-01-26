@@ -1,19 +1,16 @@
 "use client";
 
-import { useState } from "react";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { LoadSaveDropzone } from "@/components/LoadSaveDropzone";
 import { useApplicationStore } from "@/store/applicationStore";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-import { Button } from "@/components/ui/button";
-import { Filter, SortAsc, SortDesc } from "lucide-react";
 
 import { ApplicationsTable } from "@/components/ApplicationsTable";
 import { StatsView } from "@/components/StatsView";
 
 export default function DashboardPage() {
     const { applications } = useApplicationStore();
-    const [sortOrder, setSortOrder] = useState<'asc' | 'desc'>('desc');
+    // const [sortOrder, setSortOrder] = useState<'asc' | 'desc'>('desc');
 
     return (
         <div className="container mx-auto px-4 py-8 space-y-8">

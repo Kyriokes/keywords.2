@@ -13,30 +13,18 @@ export function Navbar() {
 
     // Verificar sesión al montar y cuando cambia la ruta
     useEffect(() => {
-        // Simple check: intentamos leer la cookie desde el cliente o verificamos acceso
-        // Nota: Las cookies httpOnly no se pueden leer con document.cookie directamente,
-        // pero podemos asumir estado basado en si la ruta /user/* es accesible o usar un endpoint de "me".
-        // Para simplificar y dado que es un auth simple, asumiremos que si estamos en /user estamos logueados,
-        // o podemos hacer un fetch rápido a un endpoint de check.
-        
-        // Mejor enfoque para esta implementación simple:
-        // Como el middleware protege /user, si estamos ahí, estamos logueados.
-        // Pero para mostrar el botón correcto en la home, necesitamos saberlo.
-        // Haremos un pequeño "hack" seguro: intentar acceder a una ruta protegida (ping) o verificar una cookie no-httpOnly si la tuvieramos.
-        // Como usamos httpOnly, haremos un fetch a un nuevo endpoint de status o simplemente comprobaremos acceso.
-        
+        const checkSession = async () => {
+            try {
+                // Creamos un endpoint ligero para verificar auth
+                const res = await fetch('/api/auth/status');
+                setIsLoggedIn(res.ok);
+            } catch {
+                setIsLoggedIn(false);
+            }
+        };
+
         checkSession();
     }, [pathname]);
-
-    const checkSession = async () => {
-        try {
-            // Creamos un endpoint ligero para verificar auth
-            const res = await fetch('/api/auth/status');
-            setIsLoggedIn(res.ok);
-        } catch (e) {
-            setIsLoggedIn(false);
-        }
-    };
 
     const handleLogout = async () => {
         try {
@@ -45,7 +33,7 @@ export function Navbar() {
             setIsLoggedIn(false);
             router.push('/');
             router.refresh();
-        } catch (error) {
+        } catch {
             toast.error('Error al cerrar sesión');
         }
     };
