@@ -6,6 +6,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Cell } from 'recharts';
 import { useMemo } from "react";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { normalizeKeyword } from "@/lib/utils";
 
 export function StatsView() {
     const { applications } = useApplicationStore();
@@ -31,7 +32,7 @@ export function StatsView() {
             .map(([name, value]) => ({ 
                 name, 
                 value,
-                inCv: cvKeywords.some(k => k.toLowerCase() === name.toLowerCase())
+                inCv: cvKeywords.some(k => normalizeKeyword(k) === normalizeKeyword(name))
             }))
             .sort((a, b) => b.value - a.value)
             .slice(0, 10); // Top 10
