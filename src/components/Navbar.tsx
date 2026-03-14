@@ -1,38 +1,24 @@
 'use client';
 
-import { useState, useEffect } from 'react';
-import { useRouter, usePathname } from 'next/navigation';
+import { usePathname } from 'next/navigation';
 import Link from 'next/link';
 import { Button } from '@/components/ui/button';
 import { toast } from 'sonner';
+import { signOut } from "next-auth/react";
+import type { Session } from "next-auth";
 
-export function Navbar() {
-    const router = useRouter();
+interface NavbarProps {
+    session: Session | null;
+}
+
+export function Navbar({ session }: NavbarProps) {
     const pathname = usePathname();
-    const [isLoggedIn, setIsLoggedIn] = useState(false);
-
-    // Verificar sesión al montar y cuando cambia la ruta
-    useEffect(() => {
-        const checkSession = async () => {
-            try {
-                // Creamos un endpoint ligero para verificar auth
-                const res = await fetch('/api/auth/status');
-                setIsLoggedIn(res.ok);
-            } catch {
-                setIsLoggedIn(false);
-            }
-        };
-
-        checkSession();
-    }, [pathname]);
+    const isLoggedIn = !!session?.user;
 
     const handleLogout = async () => {
         try {
-            await fetch('/api/auth/logout', { method: 'POST' });
+            await signOut({ callbackUrl: '/' });
             toast.success('Sesión cerrada');
-            setIsLoggedIn(false);
-            router.push('/');
-            router.refresh();
         } catch {
             toast.error('Error al cerrar sesión');
         }

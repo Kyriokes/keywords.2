@@ -1,23 +1,18 @@
-import { NextResponse } from 'next/server';
-import type { NextRequest } from 'next/server';
+import NextAuth from "next-auth"
+import authConfig from "./auth.config"
 
-export function middleware(request: NextRequest) {
-  const path = request.nextUrl.pathname;
+const { auth } = NextAuth(authConfig)
 
-  // Check if the path starts with /user
-  if (path.startsWith('/user')) {
-    const authToken = request.cookies.get('auth_token');
-
-    if (!authToken || authToken.value !== 'authenticated') {
-      return NextResponse.redirect(new URL('/login', request.url));
-    }
+export default auth((req) => {
+  const isLoggedIn = !!req.auth
+  const isOnDashboard = req.nextUrl.pathname.startsWith('/user')
+  
+  if (isOnDashboard) {
+    if (isLoggedIn) return
+    return Response.redirect(new URL('/login', req.nextUrl))
   }
-
-  return NextResponse.next();
-}
+})
 
 export const config = {
-  matcher: [
-    '/user/:path*',
-  ],
-};
+  matcher: ['/user/:path*'],
+}

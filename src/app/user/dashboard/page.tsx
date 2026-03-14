@@ -4,13 +4,16 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { LoadSaveDropzone } from "@/components/LoadSaveDropzone";
 import { useApplicationStore } from "@/store/applicationStore";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-
+import { useEffect } from "react";
 import { ApplicationsTable } from "@/components/ApplicationsTable";
 import { StatsView } from "@/components/StatsView";
 
 export default function DashboardPage() {
-    const { applications } = useApplicationStore();
-    // const [sortOrder, setSortOrder] = useState<'asc' | 'desc'>('desc');
+    const { applications, fetchApplications } = useApplicationStore();
+    
+    useEffect(() => {
+        fetchApplications();
+    }, [fetchApplications]);
 
     return (
         <div className="container mx-auto px-4 py-8 space-y-8">
@@ -25,28 +28,12 @@ export default function DashboardPage() {
 
             <Tabs defaultValue="applications" className="w-full space-y-6">
                 <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
-                    <TabsList className="grid w-full md:w-[400px] grid-cols-2">
-                        <TabsTrigger value="applications">Mis Postulaciones</TabsTrigger>
+                    <TabsList className="grid w-full md:w-[400px] grid-cols-3">
+                        <TabsTrigger value="applications">Postulaciones</TabsTrigger>
                         <TabsTrigger value="stats">Estadísticas</TabsTrigger>
+                        <TabsTrigger value="settings">Ajustes</TabsTrigger>
                     </TabsList>
                 </div>
-
-                {/* Sección de Carga/Descarga (Excel) */}
-                <Card className="bg-muted/30 border-dashed">
-                    <CardHeader className="pb-3">
-                        <CardTitle className="text-lg flex items-center gap-2">
-                            📂 Gestión de Datos
-                        </CardTitle>
-                        <CardDescription>
-                            Importa o exporta tu progreso para no perder tus postulaciones.
-                        </CardDescription>
-                    </CardHeader>
-                    <CardContent>
-                        <div className="max-w-xl">
-                             <LoadSaveDropzone />
-                        </div>
-                    </CardContent>
-                </Card>
 
                 <TabsContent value="applications" className="space-y-4">
                     <Card>
@@ -72,6 +59,22 @@ export default function DashboardPage() {
                         </CardHeader>
                         <CardContent>
                              <StatsView />
+                        </CardContent>
+                    </Card>
+                </TabsContent>
+
+                <TabsContent value="settings" className="space-y-4">
+                    <Card>
+                        <CardHeader>
+                            <CardTitle>Gestión de Datos (Legacy)</CardTitle>
+                            <CardDescription>
+                                Importa o exporta tus datos manualmente si lo necesitas.
+                            </CardDescription>
+                        </CardHeader>
+                        <CardContent>
+                            <div className="max-w-xl">
+                                <LoadSaveDropzone />
+                            </div>
                         </CardContent>
                     </Card>
                 </TabsContent>

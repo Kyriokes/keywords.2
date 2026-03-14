@@ -28,7 +28,9 @@ ${combinedText}
 }
 
 export function buildPromptAuto(combinedText: string, candidatePositions: string[]) {
-    const list = candidatePositions.join(", ");
+    // Escapar comillas dobles en las posiciones para evitar romper el JSON/array string
+    const list = candidatePositions.map(p => `"${p.replace(/"/g, '\\"')}"`).join(", ");
+    
     return `A partir de ahora tu respuesta debe contener ÚNICAMENTE un JSON válido.
 No expliques nada. No agregues texto. No agregues comentarios.
 Si agregás algo fuera del JSON, tu respuesta será inválida.

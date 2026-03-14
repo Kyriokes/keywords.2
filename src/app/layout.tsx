@@ -5,6 +5,7 @@ import { Navbar } from "@/components/Navbar";
 import { Footer } from "@/components/Footer";
 import { Toaster } from "sonner";
 import { ReviewOverlayWrapper } from "@/components/ReviewOverlayWrapper";
+import { auth } from "@/auth";
 
 const geistSans = Geist({
   variable: "--font-geist-sans",
@@ -21,11 +22,13 @@ export const metadata: Metadata = {
   description: "App para rastrear aplicaciones laborales",
 };
 
-export default function RootLayout({
+export default async function RootLayout({
   children,
 }: {
   children: React.ReactNode;
 }) {
+  const session = await auth();
+
   return (
     <html lang="en">
       <body
@@ -34,7 +37,7 @@ export default function RootLayout({
       >
         <Toaster />
         <ReviewOverlayWrapper />
-        <Navbar />
+        <Navbar session={session} />
         <main className="min-h-screen">{children}</main>
         <Footer />
       </body>

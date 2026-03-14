@@ -20,7 +20,13 @@ export function ApplicationReviewCard() {
     const { data, providerUsed, excludedProviders } = pendingApplication;
 
     const handleAccept = async () => {
-        addApplication({ ...data, provider: providerUsed });
+        // Mapear los datos al formato esperado por el server action
+        await addApplication({ 
+            ...data, 
+            positionId: data.positionId || data.jobTitle, // Use jobTitle as positionId/Title if not set
+            provider: providerUsed 
+        });
+        
         logAcceptance(providerUsed);
         
         // Send Feedback to Server

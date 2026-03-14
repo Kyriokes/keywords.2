@@ -1,5 +1,5 @@
 import { create } from 'zustand';
-import { persist } from 'zustand/middleware';
+import { createApplication, getApplications, deleteApplication, clearApplications } from '@/actions/application-actions';
 
 export interface JobApplication {
   id: string;
@@ -21,61 +21,93 @@ export interface PendingApplication {
 interface ApplicationState {
   applications: JobApplication[];
   pendingApplication: PendingApplication | null;
+  isLoading: boolean;
 
   // Actions
-  addApplication: (appData: Omit<JobApplication, 'id' | 'date' | 'detectedWords'> & { detectedWords?: string[], provider?: string }) => void;
-  removeApplication: (id: string) => void;
-  clearAllApplications: () => void;
-  setApplications: (applications: JobApplication[]) => void;
+  fetchApplications: () => Promise<void>;
+  addApplication: (appData: Omit<JobApplication, 'id' | 'date' | 'detectedWords'> & { detectedWords?: string[], provider?: string }) => Promise<void>;
+  removeApplication: (id: string) => Promise<void>;
+  clearAllApplications: () => Promise<void>;
   setPendingApplication: (app: PendingApplication | null) => void;
 }
 
-export const useApplicationStore = create<ApplicationState>()(
-  persist(
-    (set, get) => ({
-      applications: [],
-      pendingApplication: null,
+export const useApplicationStore = create<ApplicationState>((set, get) => ({
+  applications: [],
+  pendingApplication: null,
+  isLoading: false,
 
-      addApplication: (appData) => {
-        const state = get();
-        const link = appData.link?.trim() || "";
-
-        // Duplicate check logic
-        if (link) {
-            const exists = state.applications.some(
-                (a) => a.link?.trim().toLowerCase() === link.toLowerCase()
-            );
-            if (exists) {
-                throw new Error("Duplicate link");
-            }
-        }
-
-        const newApp: JobApplication = {
-            id: `app-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
-            date: new Date().toISOString().split("T")[0],
-            detectedWords: appData.detectedWords || [],
-            ...appData,
-        };
-
-        set((state) => ({
-            applications: [...state.applications, newApp],
-        }));
-      },
-
-      setApplications: (applications) => set({ applications }),
-      
-      setPendingApplication: (pendingApplication) => set({ pendingApplication }),
-
-      removeApplication: (id) => {
-        set((state) => ({
-            applications: state.applications.filter((app) => app.id !== id),
-        }));
-      },
-
-      clearAllApplications: () => set({ applications: [] }),
-    }),
-    {
-      name: 'application-storage',
+  fetchApplications: async () => {
+    set({ isLoading: true });
+    try {
+      const apps = await getApplications();
+      set({ applications: apps });
+    } catch (error) {
+      console.error('Failed to fetch applications:', error);
+    } finally {
+      set({ isLoading: false });
     }
-  )
-);
+  },
+
+  addApplication: async (appData) => {
+    set({ isLoading: true });
+    try {
+      // 1. Check local duplicates before server call to fail fast
+      if (appData.link) {
+          const exists = get().applications.some(
+              (a) => a.link?.trim().toLowerCase() === appData.link?.trim().toLowerCase()
+          );
+          if (exists) throw new Error("Duplicate link");
+      }
+
+      // 2. Call Server Action
+      const newApp = await createApplication({
+          jobTitle: appData.jobTitle,
+          jobDescription: appData.jobDescription,
+          link: appData.link,
+          detectedWords: appData.detectedWords || [],
+          positionTitle: appData.positionId,
+          provider: appData.provider
+      });
+
+      // 3. Update Local State
+      set((state) => ({
+        applications: [newApp, ...state.applications]
+      }));
+    } catch (error) {
+      console.error('Failed to add application:', error);
+      throw error;
+    } finally {
+      set({ isLoading: false });
+    }
+  },
+
+  removeApplication: async (id) => {
+    set({ isLoading: true });
+    try {
+      await deleteApplication(id);
+      set((state) => ({
+        applications: state.applications.filter((app) => app.id !== id),
+      }));
+    } catch (error) {
+      console.error('Failed to delete application:', error);
+      throw error;
+    } finally {
+      set({ isLoading: false });
+    }
+  },
+
+  clearAllApplications: async () => {
+    set({ isLoading: true });
+    try {
+      await clearApplications();
+      set({ applications: [] });
+    } catch (error) {
+      console.error('Failed to clear applications:', error);
+      throw error;
+    } finally {
+      set({ isLoading: false });
+    }
+  },
+
+  setPendingApplication: (pendingApplication) => set({ pendingApplication }),
+}));
