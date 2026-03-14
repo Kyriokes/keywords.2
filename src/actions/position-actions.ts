@@ -15,7 +15,7 @@ export async function getPositions() {
 
   if (!profile) return []
 
-  return profile.positions.map(p => p.title)
+  return profile.positions.map((p: any) => p.title)
 }
 
 export async function updatePositions(newTitles: string[]) {
