@@ -1,5 +1,5 @@
 import { create } from 'zustand';
-import { persist, createJSONStorage } from 'zustand/middleware';
+import { uploadCV, getCVs, deleteCV, setPrimaryCV } from '@/actions/cv-actions';
 
 export interface CV {
   id: string;
@@ -7,88 +7,72 @@ export interface CV {
   keywords: string[];
   text: string;
   uploadDate: number;
+  isPrimary?: boolean;
 }
 
 interface CvState {
   cvs: CV[];
-  activeCvId: string | null;
-
-  // Actions
-  addCv: (cv: Omit<CV, 'id' | 'uploadDate'>) => void;
-  removeCv: (id: string) => void;
-  selectCv: (id: string) => void;
-  setCvs: (cvs: CV[]) => void;
+  isLoading: boolean;
   
-  // Deprecated properties for backward compatibility (optional, but cleaner to just migrate)
-  // keywords: string[]; // Removed
-  // rawText: string;    // Removed
-  // setKeyWords: ...    // Removed
-  // setRawText: ...     // Removed
-  // clearCv: ...        // Removed
+  // Actions
+  fetchCVs: () => Promise<void>;
+  addCv: (cv: { name: string; text: string; keywords: string[] }) => Promise<void>;
+  removeCv: (id: string) => Promise<void>;
+  selectCv: (id: string) => Promise<void>;
 }
 
-export const useCvStore = create<CvState>()(
-  persist(
-    (set) => ({
-      cvs: [],
-      activeCvId: null,
+export const useCvStore = create<CvState>((set, get) => ({
+  cvs: [],
+  isLoading: false,
 
-      addCv: (cvData) =>
-        set((state) => {
-          const newCv: CV = {
-            ...cvData,
-            id: crypto.randomUUID(),
-            uploadDate: Date.now(),
-          };
-          // If it's the first CV, make it active
-          const shouldActivate = state.cvs.length === 0;
-          return {
-            cvs: [...state.cvs, newCv],
-            activeCvId: shouldActivate ? newCv.id : state.activeCvId,
-          };
-        }),
-
-      removeCv: (id) =>
-        set((state) => {
-          const newCvs = state.cvs.filter((cv) => cv.id !== id);
-          // If we removed the active CV, select another one or null
-          let newActiveId = state.activeCvId;
-          if (state.activeCvId === id) {
-            newActiveId = newCvs.length > 0 ? newCvs[0].id : null;
-          }
-          return { cvs: newCvs, activeCvId: newActiveId };
-        }),
-
-      selectCv: (id) => set({ activeCvId: id }),
-      
-      setCvs: (cvs) => set({ cvs }),
-    }),
-    {
-      name: 'cv-storage',
-      storage: createJSONStorage(() => localStorage),
-      version: 1, // Increment version to trigger migration if needed, or handle in migrate
-      migrate: (persistedState: any, version: number) => {
-        if (version === 0) {
-          // Migration from version 0 (or undefined)
-          const keywords = persistedState.keywords || [];
-          const rawText = persistedState.rawText || '';
-          
-          if (keywords.length > 0 || rawText) {
-             const legacyCv: CV = {
-               id: crypto.randomUUID(),
-               name: 'CV Original',
-               keywords,
-               text: rawText,
-               uploadDate: Date.now(),
-             };
-             return {
-               cvs: [legacyCv],
-               activeCvId: legacyCv.id,
-             };
-          }
-        }
-        return persistedState as CvState;
-      },
+  fetchCVs: async () => {
+    set({ isLoading: true });
+    try {
+      const cvs = await getCVs();
+      set({ cvs });
+    } catch (error) {
+      console.error('Failed to fetch CVs:', error);
+    } finally {
+      set({ isLoading: false });
     }
-  )
-);
+  },
+
+  addCv: async (cvData) => {
+    set({ isLoading: true });
+    try {
+      await uploadCV(cvData);
+      await get().fetchCVs(); // Refresh list to get ID and correct state
+    } catch (error) {
+      console.error('Failed to upload CV:', error);
+      throw error;
+    } finally {
+      set({ isLoading: false });
+    }
+  },
+
+  removeCv: async (id) => {
+    set({ isLoading: true });
+    try {
+      await deleteCV(id);
+      await get().fetchCVs();
+    } catch (error) {
+      console.error('Failed to delete CV:', error);
+      throw error;
+    } finally {
+      set({ isLoading: false });
+    }
+  },
+
+  selectCv: async (id) => {
+    set({ isLoading: true });
+    try {
+      await setPrimaryCV(id);
+      await get().fetchCVs();
+    } catch (error) {
+      console.error('Failed to set primary CV:', error);
+      throw error;
+    } finally {
+      set({ isLoading: false });
+    }
+  },
+}));

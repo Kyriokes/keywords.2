@@ -3,26 +3,23 @@
 import { useState, useEffect } from 'react'
 import { usePositionStore } from '@/store/PositionStore'
 import { toast } from 'sonner'
+import { Loader2 } from 'lucide-react'
 
 export function DesiredPositions() {
-    const { positions, setPositions } = usePositionStore()
+    const { positions, setPositions, fetchPositions, isLoading } = usePositionStore()
     const [quantity, setQuantity] = useState(1)
     const [localPositions, setLocalPositions] = useState<string[]>([''])
 
-    // Flag para inicializar solo una vez y evitar loops, o usar un effect que no dependa de positions si no queremos sync bidireccional constante
+    // Cargar posiciones al montar
     useEffect(() => {
-        // Solo inicializamos si localPositions está vacío (o default) y hay datos en el store.
-        // Esto evita sobrescribir si el usuario está editando y el store cambia por alguna razón externa (poco probable aquí pero buena práctica)
-        // Pero para simplificar y arreglar el lint, verificamos si es necesario actualizar.
-        
-        // Mejor approach: Cargar el estado inicial con lazy initializer en useState, 
-        // pero como positions viene de un store externo (zustand con persist), puede no estar listo al primer render.
-        // Usaremos un ref para trackear si ya cargamos.
-         
+        fetchPositions();
+    }, [fetchPositions]);
+
+    // Sincronizar estado local cuando llegan datos del servidor
+    useEffect(() => {
          if (positions.length > 0) {
-             // eslint-disable-next-line react-hooks/set-state-in-effect
              setLocalPositions(prev => {
-                 // Solo actualizar si es diferente para evitar loops si positions cambia por referencia
+                 // Solo actualizar si es diferente para evitar loops
                  if (JSON.stringify(prev) !== JSON.stringify(positions)) {
                     setQuantity(positions.length);
                     return positions;
@@ -55,9 +52,13 @@ export function DesiredPositions() {
         setLocalPositions(newPositions)
     }
 
-    const handleSave = () => {
-        setPositions(localPositions)
-        toast.success('Puestos guardados correctamente')
+    const handleSave = async () => {
+        try {
+            await setPositions(localPositions)
+            toast.success('Puestos guardados correctamente')
+        } catch (error) {
+            toast.error('Error al guardar puestos')
+        }
     }
 
     return (
@@ -70,7 +71,7 @@ export function DesiredPositions() {
                     <div className="flex items-center gap-3 bg-secondary/50 border rounded-md p-1">
                         <button
                             onClick={() => quantity > 1 && handleQuantityChange(quantity - 1)}
-                            disabled={quantity <= 1}
+                            disabled={quantity <= 1 || isLoading}
                             className="w-8 h-8 flex items-center justify-center rounded hover:bg-muted disabled:opacity-50 disabled:cursor-not-allowed transition-colors font-bold"
                             aria-label="Disminuir cantidad"
                         >
@@ -79,7 +80,7 @@ export function DesiredPositions() {
                         <span className="w-8 text-center font-medium">{quantity}</span>
                         <button
                             onClick={() => quantity < 10 && handleQuantityChange(quantity + 1)}
-                            disabled={quantity >= 10}
+                            disabled={quantity >= 10 || isLoading}
                             className="w-8 h-8 flex items-center justify-center rounded hover:bg-muted disabled:opacity-50 disabled:cursor-not-allowed transition-colors font-bold"
                             aria-label="Aumentar cantidad"
                         >
@@ -97,7 +98,8 @@ export function DesiredPositions() {
                                 value={pos}
                                 onChange={(e) => handleInputChange(index, e.target.value)}
                                 placeholder="Ej: Frontend Developer"
-                                className="w-full p-3 border rounded-md bg-background focus:ring-2 focus:ring-blue-500 outline-none transition-all"
+                                disabled={isLoading}
+                                className="w-full p-3 border rounded-md bg-background focus:ring-2 focus:ring-blue-500 outline-none transition-all disabled:opacity-50"
                             />
                         </div>
                     ))}
@@ -105,9 +107,11 @@ export function DesiredPositions() {
 
                 <button 
                     onClick={handleSave}
-                    className="w-full py-3 bg-blue-600 text-white font-semibold rounded-md hover:bg-blue-700 transition-colors shadow-sm mt-2"
+                    disabled={isLoading}
+                    className="w-full py-3 bg-blue-600 text-white font-semibold rounded-md hover:bg-blue-700 transition-colors shadow-sm mt-2 disabled:opacity-50 flex items-center justify-center gap-2"
                 >
-                    Guardar Cambios
+                    {isLoading ? <Loader2 className="animate-spin w-5 h-5" /> : null}
+                    {isLoading ? 'Guardando...' : 'Guardar Cambios'}
                 </button>
             </div>
         </section>

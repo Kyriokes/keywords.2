@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useApplicationStore } from "@/store/applicationStore";
 import { usePositionStore } from "@/store/PositionStore";
 import { useStatsStore } from "@/store/statsStore";
@@ -21,7 +21,7 @@ import { Loader2 } from "lucide-react";
 
 export default function AddJobPage() {
     const { setPendingApplication } = useApplicationStore();
-    const { positions } = usePositionStore();
+    const { positions, fetchPositions } = usePositionStore();
     const { logGeneration } = useStatsStore();
 
     const [rawText, setRawText] = useState("");
@@ -29,6 +29,10 @@ export default function AddJobPage() {
     const [selectedPosition, setSelectedPosition] = useState<string>("");
     const [isProcessing, setIsProcessing] = useState(false);
     const [autoSelect, setAutoSelect] = useState(false);
+
+    useEffect(() => {
+        fetchPositions();
+    }, [fetchPositions]);
 
     const handleProcess = async () => {
         if (!rawText.trim()) {

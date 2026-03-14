@@ -1,0 +1,244 @@
+// schema.prisma
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ==========================================
+// MÓDULO 1: AUTENTICACIÓN Y USUARIOS
+// ==========================================
+
+enum UserRole {
+  ADMIN
+  HUNTER // Candidato (Busca trabajo)
+  RECRUITER // Reclutador (Busca candidatos)
+  BUSINESS // Empresa (Gestiona procesos)
+}
+
+model User {
+  id            String    @id @default(cuid())
+  name          String?
+  email         String?   @unique
+  emailVerified DateTime?
+  image         String?
+  passwordHash  String? // Opcional, para login con email/pass
+  role          UserRole  @default(HUNTER)
+
+  // Relaciones de NextAuth
+  accounts Account[]
+  sessions Session[]
+
+  // Perfil Profesional (Separación de Identidad)
+  profile Profile?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+// Modelo que separa los datos profesionales de la identidad privada
+model Profile {
+  id       String  @id @default(cuid())
+  userId   String  @unique
+  user     User    @relation(fields: [userId], references: [id], onDelete: Cascade)
+  isPublic Boolean @default(false)
+
+  // Relaciones del Negocio (Movidas desde User)
+  cvs          CV[]
+  applications JobApplication[]
+  positions    Position[]
+  stats        ProviderStats[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+// Tablas estándar para OAuth (Google, LinkedIn, etc.)
+model Account {
+  id                String  @id @default(cuid())
+  userId            String
+  type              String
+  provider          String
+  providerAccountId String
+  refresh_token     String? @db.Text
+  access_token      String? @db.Text
+  expires_at        Int?
+  token_type        String?
+  scope             String?
+  id_token          String? @db.Text
+  session_state     String?
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([provider, providerAccountId])
+}
+
+model Session {
+  id           String   @id @default(cuid())
+  sessionToken String   @unique
+  userId       String
+  expires      DateTime
+  user         User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+model VerificationToken {
+  identifier String
+  token      String   @unique
+  expires    DateTime
+
+  @@unique([identifier, token])
+}
+
+// ==========================================
+// MÓDULO 2: CORE - CANDIDATOS Y APLICACIONES
+// ==========================================
+
+model CV {
+  id         String   @id @default(cuid())
+  name       String // Nombre del archivo o etiqueta
+  text       String   @db.Text // Contenido completo parseado
+  uploadDate DateTime @default(now())
+
+  // Campo CRÍTICO: Define cuál es el CV visible para los reclutadores.
+  // Solo un CV por perfil debe tener isPrimary = true.
+  isPrimary Boolean @default(false)
+
+  // Relación con Profile en lugar de User
+  profileId String
+  profile   Profile @relation(fields: [profileId], references: [id], onDelete: Cascade)
+
+  // Relación con palabras clave detectadas en este CV
+  keywords CVKeyword[]
+
+  // Relación opcional: Aplicaciones hechas específicamente con este CV
+  applications JobApplication[]
+
+  @@index([profileId])
+}
+
+model JobApplication {
+  id             String   @id @default(cuid())
+  date           DateTime @default(now())
+  link           String?
+  jobTitle       String // Título del puesto al que se aplica
+  jobDescription String   @db.Text // Descripción completa de la oferta
+  provider       String? // IA utilizada para el análisis (ej: GPT-4, Gemini)
+  status         String   @default("APPLIED") // Estado del proceso (APPLIED, REJECTED, etc.)
+
+  // Relación con Profile en lugar de User
+  profileId String
+  profile   Profile @relation(fields: [profileId], references: [id], onDelete: Cascade)
+
+  // Relación con una posición deseada guardada por el perfil
+  positionId            String?
+  position              Position? @relation(fields: [positionId], references: [id], onDelete: SetNull)
+  originalPositionTitle String? // Snapshot histórico del nombre de la posición
+
+  // CV utilizado para esta aplicación
+  cvId String?
+  cv   CV?     @relation(fields: [cvId], references: [id])
+
+  // Palabras clave detectadas en la descripción del trabajo
+  keywords JobApplicationKeyword[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([profileId])
+  @@index([jobTitle]) // Índice para búsquedas rápidas de ofertas por título
+}
+
+model Position {
+  id        String   @id @default(cuid())
+  title     String // Nombre del puesto deseado (ej: "Frontend Developer")
+  createdAt DateTime @default(now())
+
+  // Relación con Profile en lugar de User
+  profileId String
+  profile   Profile @relation(fields: [profileId], references: [id], onDelete: Cascade)
+
+  applications JobApplication[]
+
+  @@unique([profileId, title]) // Un perfil no debería tener duplicada la misma posición deseada
+  @@index([title]) // Vital para agrupar estadísticas globales por puesto
+}
+
+// ==========================================
+// MÓDULO 3: DICCIONARIO DE KEYWORDS (INTELLIGENCE)
+// ==========================================
+
+// Diccionario Maestro de Palabras Clave
+// Cada palabra única existe una sola vez aquí (ej: ID_1 = "React", ID_2 = "Java").
+model Keyword {
+  id            String  @id @default(cuid())
+  canonicalText String  @unique // Texto oficial/canónico (ej: "react")
+  category      String? // Opcional: Clasificación (Tecnología, Soft Skill, Idioma)
+
+  // Relación 1:N con Alias (Familias Semánticas)
+  aliases KeywordAlias[]
+
+  // Relaciones inversas para navegar el grafo
+  cvs             CVKeyword[]
+  jobApplications JobApplicationKeyword[]
+
+  @@index([canonicalText])
+}
+
+// Nuevo modelo para soportar variaciones (ej: "React.js", "ReactJS" -> "react")
+model KeywordAlias {
+  id        String @id @default(cuid())
+  aliasText String @unique // Variación (ej: "reactjs", "react.js", "react")
+
+  keywordId String
+  keyword   Keyword @relation(fields: [keywordId], references: [id], onDelete: Cascade)
+
+  @@index([aliasText]) // Índice vital para búsquedas rápidas por texto
+}
+
+// Tabla Intermedia: CV <-> Keyword
+// Representa: "Este CV contiene esta palabra clave"
+model CVKeyword {
+  cvId      String
+  keywordId String
+
+  cv      CV      @relation(fields: [cvId], references: [id], onDelete: Cascade)
+  keyword Keyword @relation(fields: [keywordId], references: [id], onDelete: Cascade)
+
+  @@id([cvId, keywordId]) // Llave compuesta
+  @@index([keywordId]) // OPTIMIZACIÓN: Permite buscar rápidamente "Todos los CVs con Java"
+}
+
+// Tabla Intermedia: JobApplication <-> Keyword
+// Representa: "Esta oferta de trabajo pide esta palabra clave"
+model JobApplicationKeyword {
+  jobApplicationId String
+  keywordId        String
+
+  jobApplication JobApplication @relation(fields: [jobApplicationId], references: [id], onDelete: Cascade)
+  keyword        Keyword        @relation(fields: [keywordId], references: [id], onDelete: Cascade)
+
+  @@id([jobApplicationId, keywordId])
+  @@index([keywordId]) // OPTIMIZACIÓN: Permite buscar "Todas las ofertas que piden Java"
+}
+
+// ==========================================
+// MÓDULO 4: MÉTRICAS
+// ==========================================
+
+model ProviderStats {
+  id        String @id @default(cuid())
+  provider  String // Nombre del proveedor (OpenAI, Anthropic, etc.)
+  generated Int    @default(0)
+  accepted  Int    @default(0)
+  rejected  Int    @default(0)
+
+  // Relación con Profile en lugar de User
+  profileId String
+  profile   Profile @relation(fields: [profileId], references: [id], onDelete: Cascade)
+
+  @@unique([profileId, provider])
+}
