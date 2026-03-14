@@ -10,11 +10,11 @@ import { normalizeKeyword } from "@/lib/utils";
 
 export function StatsView() {
     const { applications } = useApplicationStore();
-    const { cvs, activeCvId, selectCv } = useCvStore();
+    const { cvs, selectCv } = useCvStore();
 
-    const activeCv = useMemo(() => 
-        cvs.find(c => c.id === activeCvId) || cvs[0] || null, 
-    [cvs, activeCvId]);
+    const activeCv = useMemo(() =>
+        cvs.find(c => c.isPrimary) || cvs[0] || null,
+    [cvs]);
 
     const cvKeywords = activeCv?.keywords || [];
 

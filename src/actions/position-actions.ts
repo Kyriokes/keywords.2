@@ -15,7 +15,7 @@ export async function getPositions() {
 
   if (!profile) return []
 
-  return profile.positions.map(p => p.title)
+  return profile.positions.map((p: any) => p.title)
 }
 
 export async function updatePositions(newTitles: string[]) {
@@ -32,21 +32,21 @@ export async function updatePositions(newTitles: string[]) {
   const validTitles = newTitles.filter(t => t.trim() !== "")
 
   // Transaction to sync
-  await prisma.$transaction(async (tx) => {
+  await prisma.$transaction(async (tx: any) => {
     // 1. Get existing positions
     const existingPositions = await tx.position.findMany({
       where: { profileId: profile.id }
     })
     
-    const existingTitles = existingPositions.map(p => p.title)
+    const existingTitles = existingPositions.map((p: any) => p.title)
     
     // 2. Identify deletions
-    const toDelete = existingPositions.filter(p => !validTitles.includes(p.title))
+    const toDelete = existingPositions.filter((p: any) => !validTitles.includes(p.title))
     if (toDelete.length > 0) {
         await tx.position.deleteMany({
             where: { 
                 profileId: profile.id,
-                id: { in: toDelete.map(p => p.id) }
+                id: { in: toDelete.map((p: any) => p.id) }
             }
         })
     }

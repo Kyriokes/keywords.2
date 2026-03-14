@@ -45,7 +45,19 @@ export function LoadSaveDropzone({ onFileSelected }: LoadSaveDropzoneProps) {
       const data = await importFromExcel(file);
       
       // Update stores
-      useApplicationStore.getState().setApplications(data.applications);
+      for (const app of data.applications) {
+          try {
+              await useApplicationStore.getState().addApplication({
+                  jobTitle: app.jobTitle || "Imported Job",
+                  jobDescription: app.jobDescription || "",
+                  link: app.link,
+                  detectedWords: app.detectedWords || [],
+                  positionId: app.positionId
+              });
+          } catch(e) {
+              console.error("Failed to import app", e);
+          }
+      }
       
       // Import CV if exists
       if (data.cvKeywords.length > 0 || data.cvRawText) {
@@ -95,9 +107,9 @@ export function LoadSaveDropzone({ onFileSelected }: LoadSaveDropzoneProps) {
     e.stopPropagation(); // Prevent triggering the dropzone click
     try {
       const { applications } = useApplicationStore.getState();
-      const { cvs, activeCvId } = useCvStore.getState();
+      const { cvs } = useCvStore.getState();
       
-      const activeCv = cvs.find(c => c.id === activeCvId) || cvs[0];
+      const activeCv = cvs.find(c => c.isPrimary) || cvs[0];
       const keywords = activeCv?.keywords || [];
       const rawText = activeCv?.text || '';
       

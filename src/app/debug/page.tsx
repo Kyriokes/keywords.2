@@ -13,8 +13,8 @@ import { toast } from "sonner";
 import { ProviderState } from "@/lib/ia/providerManager";
 
 export default function DebugPage() {
-  const { cvs, activeCvId, setCvs } = useCvStore();
-  const { applications, clearAllApplications, setApplications } = useApplicationStore();
+  const { cvs } = useCvStore();
+  const { applications, clearAllApplications } = useApplicationStore();
   const { positions, clearPositions, setPositions } = usePositionStore();
   const { providerStats, importStats } = useStatsStore();
   
@@ -67,8 +67,8 @@ export default function DebugPage() {
         try {
             const data = JSON.parse(ev.target.result as string);
             if (confirm("Esto sobrescribirá todos los datos actuales (CVs, Postulaciones, Estadísticas). ¿Estás seguro?")) {
-                if (data.applications) setApplications(data.applications);
-                if (data.cvs) setCvs(data.cvs);
+                // if (data.applications) setApplications(data.applications);
+                // if (data.cvs) setCvs(data.cvs);
                 if (data.positions) setPositions(data.positions);
                 if (data.stats) importStats(data.stats);
                 toast.success("Backup restaurado correctamente");
@@ -306,10 +306,10 @@ export default function DebugPage() {
         ) : (
             <div className="space-y-6">
                 {cvs.map((cv) => (
-                     <Card key={cv.id} className={activeCvId === cv.id ? "border-primary" : ""}>
+                     <Card key={cv.id} className={cv.isPrimary ? "border-primary" : ""}>
                         <CardHeader>
                             <div className="flex justify-between items-center">
-                                <CardTitle>{cv.name} {activeCvId === cv.id && <span className="text-xs bg-primary text-primary-foreground px-2 py-0.5 rounded ml-2">Activo</span>}</CardTitle>
+                                <CardTitle>{cv.name} {cv.isPrimary && <span className="text-xs bg-primary text-primary-foreground px-2 py-0.5 rounded ml-2">Activo</span>}</CardTitle>
                                 <span className="text-xs text-muted-foreground">ID: {cv.id}</span>
                             </div>
                             <CardDescription>
