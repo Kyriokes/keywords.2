@@ -122,7 +122,7 @@ export async function getApplications() {
   
     if (!profile) return []
   
-    return profile.applications.map(app => ({
+    return profile.applications.map((app: any) => ({
         id: app.id,
         date: app.date.toISOString().split("T")[0],
         jobTitle: app.jobTitle,
