@@ -2,6 +2,7 @@
 
 import { auth } from "@/auth"
 import prisma from "@/lib/prisma"
+import { JobApplicationKeyword, Keyword } from "@prisma/client"
 import { revalidatePath } from "next/cache"
 
 export interface CreateApplicationData {
@@ -97,7 +98,7 @@ export async function createApplication(data: CreateApplicationData) {
       jobTitle: newApp.jobTitle,
       jobDescription: newApp.jobDescription,
       link: newApp.link || undefined,
-      detectedWords: newApp.keywords.map(k => k.keyword.canonicalText),
+      detectedWords: newApp.keywords.map((k: JobApplicationKeyword & { keyword: Keyword }) => k.keyword.canonicalText),
       positionId: newApp.position?.title || newApp.originalPositionTitle || undefined,
       provider: newApp.provider || undefined
   }
@@ -128,7 +129,7 @@ export async function getApplications() {
         jobTitle: app.jobTitle,
         jobDescription: app.jobDescription,
         link: app.link || undefined,
-        detectedWords: app.keywords.map(k => k.keyword.canonicalText),
+        detectedWords: app.keywords.map((k: JobApplicationKeyword & { keyword: Keyword }) => k.keyword.canonicalText),
         positionId: app.position?.title || app.originalPositionTitle || undefined,
         provider: app.provider || undefined
     }))
