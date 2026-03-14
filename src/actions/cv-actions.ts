@@ -64,7 +64,7 @@ export async function getCVs() {
 
   if (!profile) return []
 
-  return profile.cvs.map(cv => ({
+  return profile.cvs.map((cv: any) => ({
     id: cv.id,
     name: cv.name,
     text: cv.text,
