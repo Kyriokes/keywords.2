@@ -44,14 +44,14 @@ export default auth((req) => {
       const allowedRoles = protectedRoutes[protectedRoutePrefix];
 
       // DEBUG: Verificando permisos
-      console.log(`[Middleware] Ruta: ${pathname}`);
-      console.log(`[Middleware] Rol detectado: ${userRole}`);
-      console.log(`[Middleware] Roles permitidos: ${allowedRoles.join(", ")}`);
+      console.log(`[Proxy] Ruta: ${pathname}`);
+      console.log(`[Proxy] Rol detectado: ${userRole}`);
+      console.log(`[Proxy] Roles permitidos: ${allowedRoles.join(", ")}`);
 
       // Si el rol es undefined, significa que la sesión no tiene el dato (sesión vieja o error de auth)
       // En este caso, redirigimos a login para forzar refresco, o a unauthorized si queremos ser estrictos.
       if (!userRole) {
-         console.log("[Middleware] Rol no encontrado en sesión, redirigiendo a login para refrescar token");
+         console.log("[Proxy] Rol no encontrado en sesión, redirigiendo a login para refrescar token");
          // Opción: Redirigir a login para que se regenere el token con el rol
          // return Response.redirect(new URL("/api/auth/signout", nextUrl)); // Drástico
          // Mejor mandamos a unauthorized con un mensaje o dejamos que falle en la siguiente linea.
@@ -59,18 +59,18 @@ export default auth((req) => {
 
       // If the user doesn't have the required role, and is not an ADMIN
       if (userRole !== "ADMIN" && !allowedRoles.includes(userRole as any)) {
-        console.log("[Middleware] Acceso DENEGADO");
+        console.log("[Proxy] Acceso DENEGADO");
         return Response.redirect(new URL(UNAUTHORIZED_REDIRECT, nextUrl));
       }
       
-      console.log("[Middleware] Acceso PERMITIDO");
+      console.log("[Proxy] Acceso PERMITIDO");
     }
   }
 
   return;
 });
 
-// Invokes the middleware on all paths except for static files and next internals
+// Invokes the proxy on all paths except for static files and next internals
 export const config = {
   matcher: ["/((?!_next/static|_next/image|favicon.ico).*)"],
 };

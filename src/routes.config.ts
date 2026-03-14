@@ -12,7 +12,7 @@ export const publicRoutes = [
 
 /**
  * Diccionario de rutas protegidas y los roles que tienen acceso a ellas.
- * NOTA: El rol ADMIN tiene acceso a todo por defecto (se manejará en el middleware),
+ * NOTA: El rol ADMIN tiene acceso a todo por defecto (se manejará en el proxy),
  * por lo que no es estrictamente necesario incluirlo en cada array, pero
  * puedes hacerlo para mayor claridad.
  */
