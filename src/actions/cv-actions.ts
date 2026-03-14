@@ -2,7 +2,6 @@
 
 import { auth } from "@/auth"
 import prisma from "@/lib/prisma"
-import { CVKeyword, Keyword } from "@prisma/client"
 import { revalidatePath } from "next/cache"
 
 export async function uploadCV(data: { name: string; text: string; keywords: string[] }) {
@@ -71,7 +70,7 @@ export async function getCVs() {
     text: cv.text,
     uploadDate: cv.uploadDate.getTime(),
     isPrimary: cv.isPrimary,
-    keywords: cv.keywords.map((k: CVKeyword & { keyword: Keyword }) => k.keyword.canonicalText)
+    keywords: cv.keywords.map((k: { keyword: { canonicalText: string } }) => k.keyword.canonicalText)
   }))
 }
 
