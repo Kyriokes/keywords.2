@@ -43,13 +43,13 @@ export function Navbar({ session }: NavbarProps) {
                                 Agregar Postulación
                             </Link>
                             <Link href="/user/dashboard" className="hover:text-primary transition-colors">
-                                Panel de Control  
+                                Panel de Control
                             </Link>
                             <Link href="/user/profile" className="hover:text-primary transition-colors">
                                 Mi Perfil
                             </Link>
-                            <Link href="/debug" className="hover:text-red-500 text-muted-foreground/50 transition-colors text-xs">
-                                (Debug)
+                            <Link href="/admin" className="hover:text-red-500 text-muted-foreground/50 transition-colors text-xs">
+                                (Admin)
                             </Link>
                         </>
                     )}

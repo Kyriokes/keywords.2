@@ -1,4 +1,4 @@
-import { AiProvider } from "./types";
+import { AiProvider, HealthCheckResult } from "./types";
 
 export class OllamaProvider implements AiProvider {
     id = "ollama";
@@ -42,6 +42,22 @@ export class OllamaProvider implements AiProvider {
             return json.response || "";
         } finally {
             clearTimeout(id);
+        }
+    }
+
+    async checkHealth(): Promise<HealthCheckResult> {
+        try {
+            await this.generate("ping");
+            return { ok: true };
+        } catch (e: unknown) {
+            console.error("Ollama Health Check Failed:", e);
+            if (e instanceof Error) {
+                if (e.message.includes("fetch failed") || e.message.includes("ECONNREFUSED")) {
+                    return { ok: false, error: "Servicio local no disponible (Revisa si Ollama está corriendo)" };
+                }
+                return { ok: false, error: e.message };
+            }
+            return { ok: false, error: "Error desconocido" };
         }
     }
 }

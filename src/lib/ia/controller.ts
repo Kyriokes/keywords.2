@@ -5,6 +5,8 @@ import tryParseJsonFromText from "./helpers/tryParseJsonFromText";
 import validateAiResponse from "./helpers/validateAiResponse";
 import { buildPromptManual, buildPromptAuto } from "./helpers/buildPrompt";
 import type { AiResponse } from "./types";
+import { auth } from "@/auth";
+import { providerManager } from "./providerManager";
 
 export async function processJobApplication(
     jobTitle: string,
@@ -36,6 +38,19 @@ export async function processJobApplication(
         // Attach provider info
         parsed.provider = providerId;
         
+        // Persistir estadística "generated"
+        try {
+            const session = await auth();
+            if (session?.user?.id) {
+                // Asumimos userId = profileId temporalmente
+                const profileId = session.user.id;
+                // No await para no bloquear la respuesta al usuario
+                providerManager.persistUserStats(profileId, providerId, 'generated').catch(console.error);
+            }
+        } catch (e) {
+            console.error("Error logging stats:", e);
+        }
+
         return parsed;
     } catch (err) {
         console.error("AI controller: Error connecting to AI service:", err);

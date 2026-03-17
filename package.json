@@ -11,6 +11,8 @@
   "dependencies": {
     "@auth/prisma-adapter": "^2.11.1",
     "@google/generative-ai": "^0.24.1",
+    "@huggingface/inference": "^4.13.15",
+    "@mistralai/mistralai": "^1.15.1",
     "@prisma/client": "5.10.2",
     "@radix-ui/react-checkbox": "^1.3.3",
     "@radix-ui/react-label": "^2.1.8",
@@ -20,6 +22,7 @@
     "@tanstack/react-table": "^8.21.3",
     "class-variance-authority": "^0.7.1",
     "clsx": "^2.1.1",
+    "cohere-ai": "^7.20.0",
     "framer-motion": "^12.23.26",
     "groq-sdk": "^0.37.0",
     "lucide-react": "^0.562.0",

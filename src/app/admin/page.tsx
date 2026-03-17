@@ -7,10 +7,13 @@ import { useStatsStore } from "@/store/statsStore";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { Download, Upload, Trash2, RefreshCw } from "lucide-react";
+import { Download, Upload, Trash2, RefreshCw, Activity, CheckCircle2, XCircle, AlertCircle } from "lucide-react";
 import { useRef, useState, useEffect } from "react";
 import { toast } from "sonner";
 import { ProviderState } from "@/lib/ia/providerManager";
+import { PingResponse, SystemBackup } from "@/types/admin";
+
+const ALL_PROVIDERS = ['groq', 'gemini', 'deepseek', 'openrouter', 'huggingface', 'cerebras', 'mistral', 'cohere', 'ollama'];
 
 export default function DebugPage() {
   const { cvs } = useCvStore();
@@ -20,19 +23,40 @@ export default function DebugPage() {
   
   const [backendStats, setBackendStats] = useState<Record<string, ProviderState>>({});
   const [loadingStats, setLoadingStats] = useState(false);
+  const [pingResults, setPingResults] = useState<Record<string, { status: 'ok' | 'error' | 'loading', latency?: number }>>({});
 
   const fetchBackendStats = async () => {
       setLoadingStats(true);
       try {
           const res = await fetch('/api/debug/providers');
-          const data = await res.json();
+          if (!res.ok) throw new Error('Error al obtener estadísticas');
+          const data = (await res.json()) as Record<string, ProviderState>;
           setBackendStats(data);
-      } catch (e) {
+      } catch (e: unknown) {
           console.error(e);
           toast.error("Error al cargar estado del backend");
       } finally {
           setLoadingStats(false);
       }
+  };
+
+  const handlePing = async (providerId: string) => {
+    setPingResults(prev => ({ ...prev, [providerId]: { status: 'loading' } }));
+    try {
+        const res = await fetch(`/api/admin/ping?provider=${providerId}`);
+        const data = (await res.json()) as PingResponse;
+        
+        if (res.ok && data.status === 'ok') {
+            setPingResults(prev => ({ ...prev, [providerId]: { status: 'ok', latency: data.latency } }));
+            toast.success(`Ping a ${providerId} exitoso (${data.latency}ms)`);
+        } else {
+            setPingResults(prev => ({ ...prev, [providerId]: { status: 'error' } }));
+            toast.error(data.error || `Error al conectar con ${providerId}`);
+        }
+    } catch (e: unknown) {
+        setPingResults(prev => ({ ...prev, [providerId]: { status: 'error' } }));
+        toast.error(`Error de red al contactar ${providerId}`);
+    }
   };
 
   useEffect(() => {
@@ -63,18 +87,18 @@ export default function DebugPage() {
     if (!file) return;
     const reader = new FileReader();
     reader.onload = (ev) => {
-        if (!ev.target) return;
+        if (!ev.target?.result) return;
         try {
-            const data = JSON.parse(ev.target.result as string);
+            const data = JSON.parse(ev.target.result as string) as SystemBackup;
             if (confirm("Esto sobrescribirá todos los datos actuales (CVs, Postulaciones, Estadísticas). ¿Estás seguro?")) {
                 // if (data.applications) setApplications(data.applications);
                 // if (data.cvs) setCvs(data.cvs);
-                if (data.positions) setPositions(data.positions);
+                if (data.positions && Array.isArray(data.positions)) setPositions(data.positions);
                 if (data.stats) importStats(data.stats);
                 toast.success("Backup restaurado correctamente");
                 setTimeout(() => window.location.reload(), 1000);
             }
-        } catch(err) {
+        } catch(err: unknown) {
             console.error(err);
             toast.error("Error al leer el archivo de backup.");
         }
@@ -87,7 +111,7 @@ export default function DebugPage() {
   return (
     <div className="container mx-auto p-6 space-y-10">
       <div className="flex flex-col md:flex-row justify-between items-start md:items-center mb-6 gap-4">
-        <h1 className="text-3xl font-bold">Estado del Sistema (Debug & Admin)</h1>
+        <h1 className="text-3xl font-bold">Admin Panel</h1>
         
         <div className="flex flex-wrap gap-2">
             <Button variant="outline" onClick={handleDownloadBackup}>
@@ -186,38 +210,57 @@ export default function DebugPage() {
         <Card>
             <CardHeader>
                 <CardTitle>Estadísticas de Proveedores</CardTitle>
-                <CardDescription>Eficacia basada en aceptación de respuestas</CardDescription>
+                <CardDescription>Eficacia basada en aceptación de respuestas y estado de conexión.</CardDescription>
             </CardHeader>
             <CardContent>
-                {Object.keys(providerStats).length === 0 ? (
-                    <p className="text-muted-foreground italic">No hay datos registrados aún.</p>
-                ) : (
-                    <Table>
-                        <TableHeader>
-                            <TableRow>
-                                <TableHead>Proveedor</TableHead>
-                                <TableHead>Generadas</TableHead>
-                                <TableHead>Aceptadas</TableHead>
-                                <TableHead>Rechazadas (Retry)</TableHead>
-                                <TableHead>Tasa de Éxito</TableHead>
-                            </TableRow>
-                        </TableHeader>
-                        <TableBody>
-                            {Object.entries(providerStats).map(([provider, stats]) => {
-                                const rate = stats.generated > 0 ? ((stats.accepted / stats.generated) * 100).toFixed(1) : "0.0";
-                                return (
-                                    <TableRow key={provider}>
-                                        <TableCell className="font-medium capitalize">{provider}</TableCell>
-                                        <TableCell>{stats.generated}</TableCell>
-                                        <TableCell className="text-green-600 font-bold">{stats.accepted}</TableCell>
-                                        <TableCell className="text-red-600">{stats.rejected}</TableCell>
-                                        <TableCell>{rate}%</TableCell>
-                                    </TableRow>
-                                );
-                            })}
-                        </TableBody>
-                    </Table>
-                )}
+                <Table>
+                    <TableHeader>
+                        <TableRow>
+                            <TableHead>Proveedor</TableHead>
+                            <TableHead>Estado (Ping)</TableHead>
+                            <TableHead>Generadas</TableHead>
+                            <TableHead>Aceptadas</TableHead>
+                            <TableHead>Rechazadas</TableHead>
+                            <TableHead>Tasa de Éxito</TableHead>
+                            <TableHead>Acciones</TableHead>
+                        </TableRow>
+                    </TableHeader>
+                    <TableBody>
+                        {ALL_PROVIDERS.map((provider) => {
+                            const stats = providerStats[provider] || { generated: 0, accepted: 0, rejected: 0 };
+                            const rate = stats.generated > 0 ? ((stats.accepted / stats.generated) * 100).toFixed(1) : "N/A";
+                            const ping = pingResults[provider];
+
+                            return (
+                                <TableRow key={provider}>
+                                    <TableCell className="font-medium capitalize flex items-center gap-2">
+                                        {provider}
+                                    </TableCell>
+                                    <TableCell>
+                                        {ping?.status === 'loading' && <span className="text-yellow-600 flex items-center gap-1"><Activity className="h-3 w-3 animate-pulse" /> Probando...</span>}
+                                        {ping?.status === 'ok' && <span className="text-green-600 flex items-center gap-1"><CheckCircle2 className="h-3 w-3" /> OK ({ping.latency}ms)</span>}
+                                        {ping?.status === 'error' && <span className="text-red-600 flex items-center gap-1"><XCircle className="h-3 w-3" /> Error</span>}
+                                        {!ping && <span className="text-muted-foreground text-xs">-</span>}
+                                    </TableCell>
+                                    <TableCell>{stats.generated}</TableCell>
+                                    <TableCell className="text-green-600 font-bold">{stats.accepted}</TableCell>
+                                    <TableCell className="text-red-600">{stats.rejected}</TableCell>
+                                    <TableCell>{rate === "N/A" ? "-" : `${rate}%`}</TableCell>
+                                    <TableCell>
+                                        <Button 
+                                            variant="outline" 
+                                            size="sm" 
+                                            onClick={() => handlePing(provider)}
+                                            disabled={ping?.status === 'loading'}
+                                        >
+                                            <Activity className="h-3 w-3 mr-1" /> Ping
+                                        </Button>
+                                    </TableCell>
+                                </TableRow>
+                            );
+                        })}
+                    </TableBody>
+                </Table>
             </CardContent>
         </Card>
       </section>
