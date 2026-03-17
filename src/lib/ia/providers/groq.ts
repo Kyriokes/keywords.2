@@ -1,4 +1,4 @@
-import { AiProvider } from "./types";
+import { AiProvider, HealthCheckResult } from "./types";
 import Groq from "groq-sdk";
 
 export class GroqProvider implements AiProvider {
@@ -31,6 +31,23 @@ export class GroqProvider implements AiProvider {
         } catch (error) {
             console.error("Groq Provider Error:", error);
             throw error;
+        }
+    }
+
+    async checkHealth(): Promise<HealthCheckResult> {
+        try {
+            await this.client.chat.completions.create({
+                messages: [{ role: "user", content: "ping" }],
+                model: this.model,
+                max_tokens: 1,
+            });
+            return { ok: true };
+        } catch (e: unknown) {
+            console.error("Groq Health Check Failed:", e);
+            if (e instanceof Error) {
+                return { ok: false, error: e.message };
+            }
+            return { ok: false, error: "Error desconocido" };
         }
     }
 }

@@ -21,7 +21,6 @@ export const protectedRoutes: Record<string, UserRole[]> = {
   "/user": ["HUNTER", "ADMIN"],
   "/recruiter": ["RECRUITER", "ADMIN"],
   "/business": ["BUSINESS", "ADMIN"],
-  "/debug": ["ADMIN"],
 };
 
 /**

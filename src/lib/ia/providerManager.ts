@@ -1,3 +1,4 @@
+import prisma from "@/lib/prisma";
 
 export interface ProviderState {
     score: number;
@@ -19,6 +20,7 @@ const COOLDOWN_MS = 5 * 60 * 1000; // 5 minutes
 class ProviderManager {
     private static instance: ProviderManager;
     private stats: Map<string, ProviderState> = new Map();
+    private initialized = false;
 
     private constructor() {}
 
@@ -27,6 +29,21 @@ class ProviderManager {
             ProviderManager.instance = new ProviderManager();
         }
         return ProviderManager.instance;
+    }
+
+    private async ensureInitialized() {
+        if (this.initialized) return;
+        
+        // Cargar estadísticas iniciales desde la BD
+        // Nota: Como este es un singleton global, asumimos un perfil "sistema" o agregamos métricas globales.
+        // Dado que el esquema actual vincula ProviderStats a un Profile, y ProviderManager es global,
+        // necesitamos una estrategia.
+        // ESTRATEGIA: ProviderManager maneja el estado "en caliente" (score, cooldown) que es global para la instancia.
+        // La persistencia histórica se hará asíncronamente hacia la BD cuando sea posible, o se cargará al inicio.
+        
+        // Por ahora, mantendremos el estado en memoria como fuente de verdad para la lógica de selección,
+        // pero agregaremos métodos para persistir los contadores.
+        this.initialized = true;
     }
 
     private getOrCreate(id: string): ProviderState {
@@ -58,11 +75,8 @@ class ProviderManager {
         if (available.length === 0) return null;
 
         // Normalización de Pesos (1x - 2x Ratio)
-        // Mapeamos el score [10, 200] a un peso [1.0, 2.0]
-        // Esto garantiza que el proveedor favorito tenga máximo el doble de probabilidad que el menos favorito.
         const weightedCandidates = available.map(id => {
             const score = this.getOrCreate(id).score;
-            // Formula: 1 + (Score - Min) / (Max - Min)
             const weight = 1 + ((score - MIN_SCORE) / (MAX_SCORE - MIN_SCORE));
             return { id, weight };
         });
@@ -112,6 +126,35 @@ class ProviderManager {
             obj[key] = { ...val };
         });
         return obj;
+    }
+    
+    // Método para persistir estadísticas de un usuario específico
+    public async persistUserStats(profileId: string, providerId: string, type: 'generated' | 'accepted' | 'rejected') {
+        try {
+            const updateData: any = {};
+            if (type === 'generated') updateData.generated = { increment: 1 };
+            if (type === 'accepted') updateData.accepted = { increment: 1 };
+            if (type === 'rejected') updateData.rejected = { increment: 1 };
+
+            await prisma.providerStats.upsert({
+                where: {
+                    profileId_provider: {
+                        profileId,
+                        provider: providerId
+                    }
+                },
+                create: {
+                    profileId,
+                    provider: providerId,
+                    generated: type === 'generated' ? 1 : 0,
+                    accepted: type === 'accepted' ? 1 : 0,
+                    rejected: type === 'rejected' ? 1 : 0
+                },
+                update: updateData
+            });
+        } catch (error) {
+            console.error(`[ProviderManager] Error persisting stats for ${providerId}:`, error);
+        }
     }
 }
 

@@ -1,4 +1,4 @@
-import { AiProvider } from "./types";
+import { AiProvider, HealthCheckResult } from "./types";
 import OpenAI from "openai";
 
 export class DeepSeekProvider implements AiProvider {
@@ -32,6 +32,26 @@ export class DeepSeekProvider implements AiProvider {
         } catch (error) {
             console.error("DeepSeek Provider Error:", error);
             throw error;
+        }
+    }
+
+    async checkHealth(): Promise<HealthCheckResult> {
+        try {
+            await this.client.chat.completions.create({
+                messages: [{ role: "user", content: "ping" }],
+                model: this.model,
+                max_tokens: 1,
+            });
+            return { ok: true };
+        } catch (e: unknown) {
+            console.error("DeepSeek Health Check Failed:", e);
+            if (e instanceof Error) {
+                if (e.message.includes("402") || e.message.includes("Insufficient Balance")) {
+                    return { ok: false, error: "Saldo insuficiente (Billing)" };
+                }
+                return { ok: false, error: e.message };
+            }
+            return { ok: false, error: "Error desconocido" };
         }
     }
 }
