@@ -29,14 +29,8 @@ export function ApplicationReviewCard() {
         
         logAcceptance(providerUsed);
         
-        // Send Feedback to Server
-        try {
-            await fetch('/api/feedback', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ providerId: providerUsed, action: 'accept' })
-            });
-        } catch(e) { console.error("Feedback error", e); }
+        // Note: Server action 'createApplication' now handles persisting the 'accepted' stat to DB.
+        // We only update local store here for immediate UI feedback if needed.
 
         setPendingApplication(null);
         toast.success("Postulación guardada correctamente");

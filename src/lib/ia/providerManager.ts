@@ -27,6 +27,10 @@ class ProviderManager {
     public static getInstance(): ProviderManager {
         if (!ProviderManager.instance) {
             ProviderManager.instance = new ProviderManager();
+            // Iniciar carga asíncrona de estadísticas (fire-and-forget)
+            ProviderManager.instance.ensureInitialized().catch(err => {
+                console.error("[ProviderManager] Error initializing stats:", err);
+            });
         }
         return ProviderManager.instance;
     }
@@ -34,15 +38,44 @@ class ProviderManager {
     private async ensureInitialized() {
         if (this.initialized) return;
         
-        // Cargar estadísticas iniciales desde la BD
-        // Nota: Como este es un singleton global, asumimos un perfil "sistema" o agregamos métricas globales.
-        // Dado que el esquema actual vincula ProviderStats a un Profile, y ProviderManager es global,
-        // necesitamos una estrategia.
-        // ESTRATEGIA: ProviderManager maneja el estado "en caliente" (score, cooldown) que es global para la instancia.
-        // La persistencia histórica se hará asíncronamente hacia la BD cuando sea posible, o se cargará al inicio.
+        try {
+            // Cargar estadísticas globales agregadas desde la BD
+            const aggregated = await prisma.providerStats.groupBy({
+                by: ['provider'],
+                _sum: {
+                    generated: true,
+                    accepted: true,
+                    rejected: true
+                }
+            });
+
+            for (const stat of aggregated) {
+                const providerId = stat.provider;
+                const accepted = stat._sum.accepted || 0;
+                const rejected = stat._sum.rejected || 0;
+                const generated = stat._sum.generated || 0;
+
+                // Calcular score inicial basado en histórico
+                let score = DEFAULT_SCORE;
+                score += (accepted * REWARD_ACCEPT);
+                score -= (rejected * PENALTY_REJECT);
+                
+                // Clamp score
+                score = Math.max(MIN_SCORE, Math.min(MAX_SCORE, score));
+
+                // Actualizar estado en memoria
+                const state = this.getOrCreate(providerId);
+                state.score = score;
+                state.totalAccepted = accepted;
+                state.totalRejected = rejected;
+                state.totalGenerated = generated;
+                
+                console.log(`[ProviderManager] Loaded stats for ${providerId}: Score=${score} (Accepted=${accepted}, Rejected=${rejected})`);
+            }
+        } catch (error) {
+            console.error("[ProviderManager] Failed to load stats from DB:", error);
+        }
         
-        // Por ahora, mantendremos el estado en memoria como fuente de verdad para la lógica de selección,
-        // pero agregaremos métodos para persistir los contadores.
         this.initialized = true;
     }
 

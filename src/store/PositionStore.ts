@@ -30,10 +30,20 @@ export const usePositionStore = create<PositionState>((set) => ({
       set({ positions: newPositions });
     } catch (error) {
       console.error('Failed to update positions:', error);
-      throw error; // Re-throw to let component handle error/toast
+      throw error;
     } finally {
       set({ isLoading: false });
     }
   },
-  clearPositions: () => set({ positions: [] }),
+  clearPositions: async () => {
+      set({ isLoading: true });
+      try {
+          await updatePositions([]);
+          set({ positions: [] });
+      } catch (error) {
+          console.error('Failed to clear positions:', error);
+      } finally {
+          set({ isLoading: false });
+      }
+  }
 }));

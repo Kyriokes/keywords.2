@@ -42,10 +42,17 @@ export async function processJobApplication(
         try {
             const session = await auth();
             if (session?.user?.id) {
-                // Asumimos userId = profileId temporalmente
-                const profileId = session.user.id;
-                // No await para no bloquear la respuesta al usuario
-                providerManager.persistUserStats(profileId, providerId, 'generated').catch(console.error);
+                // Obtener profileId real desde la BD
+                const prisma = (await import("@/lib/prisma")).default;
+                const profile = await prisma.profile.findUnique({
+                    where: { userId: session.user.id },
+                    select: { id: true }
+                });
+
+                if (profile) {
+                    // No await para no bloquear la respuesta al usuario
+                    providerManager.persistUserStats(profile.id, providerId, 'generated').catch(console.error);
+                }
             }
         } catch (e) {
             console.error("Error logging stats:", e);

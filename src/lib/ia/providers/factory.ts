@@ -62,6 +62,7 @@ export function getAiProvider(excludeIds: string[] = []): AiProvider {
     if (preferredProvider && !excludeIds.includes(preferredProvider)) {
         const factory = factories[preferredProvider];
         if (factory) {
+            console.log(`[Factory] Forcing provider ${preferredProvider} via AI_PROVIDER env var`);
             const instance = factory();
             if (instance) return instance;
         }

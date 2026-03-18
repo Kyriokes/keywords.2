@@ -16,9 +16,9 @@ import { PingResponse, SystemBackup } from "@/types/admin";
 const ALL_PROVIDERS = ['groq', 'gemini', 'deepseek', 'openrouter', 'huggingface', 'cerebras', 'mistral', 'cohere', 'ollama'];
 
 export default function DebugPage() {
-  const { cvs } = useCvStore();
-  const { applications, clearAllApplications } = useApplicationStore();
-  const { positions, clearPositions, setPositions } = usePositionStore();
+  const { cvs, fetchCVs } = useCvStore();
+  const { applications, clearAllApplications, fetchApplications } = useApplicationStore();
+  const { positions, clearPositions, setPositions, fetchPositions } = usePositionStore();
   const { providerStats, importStats } = useStatsStore();
   
   const [backendStats, setBackendStats] = useState<Record<string, ProviderState>>({});
@@ -38,6 +38,16 @@ export default function DebugPage() {
       } finally {
           setLoadingStats(false);
       }
+  };
+
+  const refreshAllData = async () => {
+      await Promise.all([
+          fetchBackendStats(),
+          fetchApplications(),
+          fetchCVs(),
+          fetchPositions()
+      ]);
+      toast.success("Datos actualizados desde la BD");
   };
 
   const handlePing = async (providerId: string) => {
@@ -60,7 +70,7 @@ export default function DebugPage() {
   };
 
   useEffect(() => {
-      fetchBackendStats();
+      refreshAllData();
   }, []);
 
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -149,9 +159,9 @@ export default function DebugPage() {
       <section className="space-y-4">
         <div className="flex justify-between items-center border-b pb-2">
             <h2 className="text-2xl font-semibold">Salud del Sistema (Backend)</h2>
-            <Button variant="ghost" size="sm" onClick={fetchBackendStats} disabled={loadingStats}>
+            <Button variant="ghost" size="sm" onClick={refreshAllData} disabled={loadingStats}>
                 <RefreshCw className={`h-4 w-4 mr-2 ${loadingStats ? 'animate-spin' : ''}`} />
-                Actualizar
+                Actualizar Todo
             </Button>
         </div>
         
