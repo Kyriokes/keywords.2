@@ -26,9 +26,8 @@ export default function AddJobPage() {
 
     const [rawText, setRawText] = useState("");
     const [link, setLink] = useState("");
-    const [selectedPosition, setSelectedPosition] = useState<string>("");
+    const [selectedPosition, setSelectedPosition] = useState<string>("none");
     const [isProcessing, setIsProcessing] = useState(false);
-    const [autoSelect, setAutoSelect] = useState(false);
 
     useEffect(() => {
         fetchPositions();
@@ -43,10 +42,6 @@ export default function AddJobPage() {
             toast.error("Por favor, ingresa el link de la publicación.");
             return;
         }
-        if (!autoSelect && !selectedPosition) {
-            toast.error("Por favor, selecciona un puesto.");
-            return;
-        }
 
         setIsProcessing(true);
         try {
@@ -54,22 +49,22 @@ export default function AddJobPage() {
             const aiResponse = await processJobApplication(
                 "Oferta Laboral",
                 rawText,
-                autoSelect ? { autoSelect: true, candidatePositions: positions } : undefined
+                { autoSelect: true, candidatePositions: [] } // Siempre usamos el prompt auto para extraer el título real
             );
             
-            const chosenPosition = autoSelect ? (aiResponse.puesto || "otros") : selectedPosition;
+            const rawJobTitle = aiResponse.puesto || "Oferta Laboral";
             const provider = aiResponse.provider || "unknown";
-
+            
             // Log stats
             logGeneration(provider);
 
             // Set pending instead of adding directly
             setPendingApplication({
                 data: {
-                    jobTitle: chosenPosition || "otros",
+                    jobTitle: rawJobTitle,
                     jobDescription: rawText,
                     detectedWords: aiResponse.palabrasClave.map(k => k.nombre),
-                    positionId: chosenPosition,
+                    positionId: selectedPosition === "none" ? undefined : selectedPosition,
                     link: link.trim()
                 },
                 providerUsed: provider,
@@ -103,18 +98,18 @@ export default function AddJobPage() {
 
             <div className="space-y-4">
                 <div className="space-y-2">
-                    <Label htmlFor="position">Puesto Objetivo</Label>
+                    <Label htmlFor="position">Carpeta Personal de Puesto (Opcional)</Label>
                     <div className="flex items-center gap-4">
                         <div className="flex-1">
                             <Select
                                 value={selectedPosition}
-                                onValueChange={autoSelect ? () => {} : setSelectedPosition}
+                                onValueChange={setSelectedPosition}
                             >
-                                <SelectTrigger className={autoSelect ? "pointer-events-none opacity-50" : ""}>
-                                    <SelectValue placeholder="Selecciona el puesto..." />
+                                <SelectTrigger>
+                                    <SelectValue placeholder="Selecciona una carpeta (opcional)..." />
                                 </SelectTrigger>
                                 <SelectContent>
-                                    <SelectItem value="otros">Otros</SelectItem>
+                                    <SelectItem value="none">Sin agrupar</SelectItem>
                                     {positions.map((pos) => (
                                         <SelectItem key={pos} value={pos}>
                                             {pos}
@@ -123,31 +118,10 @@ export default function AddJobPage() {
                                 </SelectContent>
                             </Select>
                         </div>
-                        <div className="flex items-center gap-2">
-                            <span className="text-sm text-muted-foreground">Dejar que la IA decida</span>
-                            <button
-                                type="button"
-                                onClick={() => {
-                                    const next = !autoSelect;
-                                    setAutoSelect(next);
-                                    if (next) setSelectedPosition("");
-                                }}
-                                aria-pressed={autoSelect}
-                                className={`relative inline-flex h-6 w-10 rounded-full transition-colors ${
-                                    autoSelect ? "bg-primary" : "bg-muted"
-                                }`}
-                            >
-                                <span
-                                    className={`absolute top-0.5 h-5 w-5 rounded-full bg-background shadow transition-transform ${
-                                        autoSelect ? "translate-x-5" : "translate-x-0.5"
-                                    }`}
-                                />
-                            </button>
-                        </div>
                     </div>
                     {positions.length === 0 && (
                         <p className="text-sm text-muted-foreground">
-                            No tienes puestos creados. Ve al <a href="/user/dashboard" className="text-primary hover:underline">Dashboard</a> para crear uno.
+                            No tienes carpetas de puestos. Ve al <a href="/user/dashboard" className="text-primary hover:underline">Dashboard</a> para crear uno.
                         </p>
                     )}
                 </div>

@@ -27,10 +27,7 @@ ${combinedText}
 ###TEXTO###`;
 }
 
-export function buildPromptAuto(combinedText: string, candidatePositions: string[]) {
-    // Escapar comillas dobles en las posiciones para evitar romper el JSON/array string
-    const list = candidatePositions.map(p => `"${p.replace(/"/g, '\\"')}"`).join(", ");
-    
+export function buildPromptAuto(combinedText: string) {
     return `A partir de ahora tu respuesta debe contener ÚNICAMENTE un JSON válido.
 No expliques nada. No agregues texto. No agregues comentarios.
 Si agregás algo fuera del JSON, tu respuesta será inválida.
@@ -45,8 +42,7 @@ RESPONDE EXACTAMENTE EN ESTE FORMATO (no agregar ni quitar nada):
 
 REGLAS:
 - Procesá SOLO el texto entre ###TEXTO###.
-- Elegí un "puesto" EXCLUSIVAMENTE de esta lista: [${list}]
-- Si no corresponde ninguno, usar "otros".
+- Extrae el "puesto" EXACTO tal cual aparece en el título o descripción de la oferta laboral (ej. "Ninja React Engineer", "Desarrollador Frontend Senior"). NO inventes categorías ni uses la palabra "otros". Si no es claro, deduce el título más representativo de la oferta.
 - SOLO extrae palabras clave profesionales de alto valor para filtros ATS.
 - Las palabras clave incluyen:
     * Habilidades Duras (Hard Skills): Competencias técnicas específicas de la profesión.
@@ -57,7 +53,6 @@ REGLAS:
 - MANTENER términos compuestos estándar si forman un concepto único (ej: "Project Manager", "Control de Calidad", "RESTful APIs").
 - EXCLUIR: Palabras genéricas de uso común ("trabajo", "excelente", "equipo", "responsable", "tareas", "buscamos").
 - Contá coincidencias literales, ignorando mayúsculas/minúsculas.
-- NO inventes palabras ni puestos fuera de la lista.
 - NO agregues texto fuera del JSON.
 
 IMPORTANTE:
