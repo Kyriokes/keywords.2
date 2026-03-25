@@ -1,37 +1,23 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState } from "react";
 import { useApplicationStore } from "@/store/applicationStore";
-import { usePositionStore } from "@/store/PositionStore";
 import { useStatsStore } from "@/store/statsStore";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Label } from "@/components/ui/label";
-import {
-    Select,
-    SelectContent,
-    SelectItem,
-    SelectTrigger,
-    SelectValue,
-} from "@/components/ui/select";
 import { processJobApplication } from "@/lib/ia/controller";
 import { toast } from "sonner";
 import { Loader2 } from "lucide-react";
 
 export default function AddJobPage() {
     const { setPendingApplication } = useApplicationStore();
-    const { positions, fetchPositions } = usePositionStore();
     const { logGeneration } = useStatsStore();
 
     const [rawText, setRawText] = useState("");
     const [link, setLink] = useState("");
-    const [selectedPosition, setSelectedPosition] = useState<string>("none");
     const [isProcessing, setIsProcessing] = useState(false);
-
-    useEffect(() => {
-        fetchPositions();
-    }, [fetchPositions]);
 
     const handleProcess = async () => {
         if (!rawText.trim()) {
@@ -64,7 +50,7 @@ export default function AddJobPage() {
                     jobTitle: rawJobTitle,
                     jobDescription: rawText,
                     detectedWords: aiResponse.palabrasClave.map(k => k.nombre),
-                    positionId: selectedPosition === "none" ? undefined : selectedPosition,
+                    positionId: undefined,
                     link: link.trim()
                 },
                 providerUsed: provider,
@@ -97,35 +83,6 @@ export default function AddJobPage() {
             <h1 className="text-3xl font-bold text-center">Cargar Nueva Postulación</h1>
 
             <div className="space-y-4">
-                <div className="space-y-2">
-                    <Label htmlFor="position">Carpeta Personal de Puesto (Opcional)</Label>
-                    <div className="flex items-center gap-4">
-                        <div className="flex-1">
-                            <Select
-                                value={selectedPosition}
-                                onValueChange={setSelectedPosition}
-                            >
-                                <SelectTrigger>
-                                    <SelectValue placeholder="Selecciona una carpeta (opcional)..." />
-                                </SelectTrigger>
-                                <SelectContent>
-                                    <SelectItem value="none">Sin agrupar</SelectItem>
-                                    {positions.map((pos) => (
-                                        <SelectItem key={pos} value={pos}>
-                                            {pos}
-                                        </SelectItem>
-                                    ))}
-                                </SelectContent>
-                            </Select>
-                        </div>
-                    </div>
-                    {positions.length === 0 && (
-                        <p className="text-sm text-muted-foreground">
-                            No tienes carpetas de puestos. Ve al <a href="/user/dashboard" className="text-primary hover:underline">Dashboard</a> para crear uno.
-                        </p>
-                    )}
-                </div>
-
                 <div className="space-y-2">
                     <Label htmlFor="jobLink">Link de la Publicación</Label>
                     <Input
