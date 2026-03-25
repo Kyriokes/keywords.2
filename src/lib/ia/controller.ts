@@ -22,7 +22,7 @@ export async function processJobApplication(
 ): Promise<AiResponse> {
     const combined = `${jobTitle}\n\n${jobDescription}`;
     const prompt = opts?.autoSelect
-        ? buildPromptAuto(combined, opts?.candidatePositions || [])
+        ? buildPromptAuto(combined)
         : buildPromptManual(combined);
 
     try {
