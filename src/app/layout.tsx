@@ -18,8 +18,8 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "Job Tracker",
-  description: "App para rastrear aplicaciones laborales",
+  title: "KeyWords",
+  description: "Organizá tus postulaciones y descubrí qué te falta para conseguir el trabajo que querés.",
 };
 
 export default async function RootLayout({
@@ -30,7 +30,7 @@ export default async function RootLayout({
   const session = await auth();
 
   return (
-    <html lang="en">
+    <html lang="es">
       <body
         className={`${geistSans.variable} ${geistMono.variable} antialiased`}
         suppressHydrationWarning

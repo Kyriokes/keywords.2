@@ -13,6 +13,8 @@ export interface CreateApplicationData {
   provider?: string
 }
 
+import { providerManager } from "@/lib/ia/providerManager"
+
 export async function createApplication(data: CreateApplicationData) {
   const session = await auth()
   if (!session?.user?.id) throw new Error("Unauthorized")
@@ -22,6 +24,12 @@ export async function createApplication(data: CreateApplicationData) {
   })
 
   if (!profile) throw new Error("Profile not found")
+
+  // Log acceptance if provider was used
+  if (data.provider) {
+    // Fire and forget
+    providerManager.persistUserStats(profile.id, data.provider, 'accepted').catch(console.error)
+  }
 
   // Check for duplicates by link
   if (data.link) {

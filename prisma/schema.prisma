@@ -36,8 +36,17 @@ model User {
   // Perfil Profesional (Separación de Identidad)
   profile Profile?
 
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
+  // Nuevas relaciones para Economía y Logros
+  balance      Balance?
+  coinBuckets  CoinBucket[]
+  ledgers      TokenLedger[]
+  usageLogs    UsageLog[]
+  transactions PaymentTransaction[]
+  quests       UserQuest[]
+
+  createdAt         DateTime            @default(now())
+  updatedAt         DateTime            @updatedAt
+  MappingSuggestion MappingSuggestion[]
 }
 
 // Modelo que separa los datos profesionales de la identidad privada
@@ -137,6 +146,10 @@ model JobApplication {
   positionId            String?
   position              Position? @relation(fields: [positionId], references: [id], onDelete: SetNull)
   originalPositionTitle String? // Snapshot histórico del nombre de la posición
+
+  // NUEVO: Enlace al diccionario global de puestos (Capa 3)
+  canonicalPositionId String?
+  canonicalPosition   CanonicalPosition? @relation(fields: [canonicalPositionId], references: [id], onDelete: SetNull)
 
   // CV utilizado para esta aplicación
   cvId String?
@@ -241,4 +254,278 @@ model ProviderStats {
   profile   Profile @relation(fields: [profileId], references: [id], onDelete: Cascade)
 
   @@unique([profileId, provider])
+}
+
+// ==========================================
+// MÓDULO 5: DICCIONARIO GLOBAL DE PUESTOS
+// ==========================================
+
+// 1. Capa Superior: Sector o Industria
+model Sector {
+  id          String  @id @default(cuid())
+  name        String  @unique // ej: "Tecnología / IT", "Marketing", "Finanzas"
+  description String?
+  isActive    Boolean @default(true)
+
+  positions CanonicalPosition[]
+}
+
+// 2. Capa Media: Puesto Canónico
+model CanonicalPosition {
+  id       String  @id @default(cuid())
+  name     String  @unique // ej: "Frontend Developer"
+  isActive Boolean @default(true)
+
+  // Relación con el Sector
+  sectorId String?
+  sector   Sector? @relation(fields: [sectorId], references: [id])
+
+  // Relación con las aplicaciones reales
+  applications JobApplication[]
+
+  // Relación con los alias
+  aliases PositionAlias[]
+}
+
+// 3. Capa Inferior: Alias (El mapeo automático)
+model PositionAlias {
+  id        String @id @default(cuid())
+  aliasText String @unique // ej: "React Ninja", "UI Engineer"
+
+  canonicalPositionId String
+  canonicalPosition   CanonicalPosition @relation(fields: [canonicalPositionId], references: [id], onDelete: Cascade)
+}
+
+// ==========================================
+// MÓDULO 6: CROWDSOURCING Y MODERACIÓN
+// ==========================================
+
+enum SuggestionType {
+  ALIAS_TO_CANONICAL // Proponer que "React Ninja" sea "Frontend Developer"
+  CANONICAL_TO_SECTOR // Proponer que "Frontend Developer" pertenezca a "Tecnología / IT"
+}
+
+enum SuggestionStatus {
+  PENDING
+  APPROVED
+  REJECTED
+}
+
+model MappingSuggestion {
+  id   String         @id @default(cuid())
+  type SuggestionType
+
+  // Campos usados si type == ALIAS_TO_CANONICAL
+  rawTitle             String?
+  suggestedCanonicalId String? // ID si sugiere un canónico existente
+  proposedNewCanonical String? // Texto si sugiere crear un canónico nuevo
+
+  // Campos usados si type == CANONICAL_TO_SECTOR
+  targetCanonicalId String? // El puesto canónico que se quiere categorizar
+  suggestedSectorId String? // ID si sugiere un sector existente
+  proposedNewSector String? // Texto si sugiere crear un sector nuevo
+
+  status SuggestionStatus @default(PENDING)
+
+  userId String // Usuario o Recruiter que hace la propuesta
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  createdAt DateTime @default(now())
+}
+
+// ==========================================
+// MÓDULO 7: ECONOMÍA, TOKENS Y SUSCRIPCIONES
+// ==========================================
+
+// 1. Capa de Performance: Caché del saldo actual
+model Balance {
+  id     String @id @default(cuid())
+  userId String @unique
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  // Tokens Totales (Calculable desde Ledger/Buckets)
+  coins Int @default(0) // Monedas (vencen)
+  gems  Int @default(0) // Diamantes (no vencen)
+
+  // Control de concurrencia (Optimistic Locking)
+  version Int @default(0)
+
+  // Estado de suscripción
+  subscriptionExpiresAt DateTime?
+
+  updatedAt DateTime @updatedAt
+
+  // Índice compuesto para Optimistic Locking
+  @@unique([userId, version])
+}
+
+// 2. Capa de Lógica: Lotes de Monedas (Resuelve expiraciones múltiples)
+model CoinBucket {
+  id     String @id @default(cuid())
+  userId String
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  originalAmount  Int // Cuánto se otorgó originalmente
+  remainingAmount Int // Cuánto queda disponible en este lote
+  expiresAt       DateTime // Cuándo expiran exactamente
+
+  createdAt DateTime @default(now())
+
+  // Índices para optimizar la búsqueda de buckets próximos a expirar
+  @@index([userId, expiresAt])
+}
+
+// 3. Capa de Auditoría: El Libro Contable Inmutable (Ledger)
+enum TokenType {
+  COIN
+  GEM
+}
+
+enum Direction {
+  CREDIT
+  DEBIT
+}
+
+enum LedgerReason {
+  SUBSCRIPTION_GRANT
+  USAGE
+  QUEST_REWARD
+  PURCHASE
+  EXPIRATION
+  ADMIN_ADJUSTMENT
+}
+
+model TokenLedger {
+  id     String @id @default(cuid())
+  userId String
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  // Tipo de operación
+  tokenType TokenType
+  direction Direction
+
+  // Variación en este movimiento
+  coinsDelta Int @default(0)
+  gemsDelta  Int @default(0)
+
+  reason LedgerReason
+
+  // Trazabilidad e Idempotencia
+  referenceType String? // ej: "usage_log", "payment_transaction", "quest"
+  referenceId   String?
+  bucketId      String? // Opcional: para saber de qué lote salió/entró la moneda
+
+  // Auditoría estricta: Saldo resultante de la transacción
+  balanceAfterCoins Int @default(0)
+  balanceAfterGems  Int @default(0)
+
+  createdAt DateTime @default(now())
+
+  // Idempotencia fuerte: Evitar procesar dos veces el mismo evento
+  // Solo se aplica si referenceType y referenceId no son nulos. Prisma lo permite.
+  @@unique([referenceType, referenceId])
+  @@index([userId])
+  @@index([tokenType])
+  @@index([reason])
+}
+
+// Enums para acciones específicas del usuario
+enum ActionType {
+  CREATE_POSTULATION
+  IMPROVE_CV
+  GENERATE_COVER_LETTER
+}
+
+// Historial detallado de consumo en la plataforma
+model UsageLog {
+  id     String @id @default(cuid())
+  userId String
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  action       ActionType
+  providerUsed String?
+
+  // Detalle del consumo mixto
+  // Nota: total tokens = coinsConsumed + gemsConsumed
+  coinsConsumed Int @default(0)
+  gemsConsumed  Int @default(0)
+
+  // Auditoría: Saldo antes y después
+  coinsBefore Int?
+  coinsAfter  Int?
+  gemsBefore  Int?
+  gemsAfter   Int?
+
+  createdAt DateTime @default(now())
+
+  @@index([userId])
+}
+
+enum PaymentStatus {
+  PENDING
+  APPROVED
+  REJECTED
+}
+
+// Historial inmutable de compras (Agnóstico al proveedor)
+model PaymentTransaction {
+  id     String @id @default(cuid())
+  userId String
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  amount   Float // Monto en dinero fiat
+  currency String @default("ARS")
+
+  provider     String // "mercadopago", "paypal", "stripe"
+  providerTxId String        @unique
+  status       PaymentStatus @default(PENDING)
+
+  type String // "subscription" o "gems_pack"
+
+  // Qué se otorgó exactamente
+  coinsGranted Int @default(0)
+  gemsGranted  Int @default(0)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([userId])
+}
+
+// ==========================================
+// MÓDULO 8: LOGROS (QUESTS)
+// ==========================================
+
+// El catálogo de logros disponibles
+model Quest {
+  id          String  @id @default(cuid())
+  title       String // ej: "Primeros pasos"
+  description String? // ej: "Crea tu primera postulación"
+
+  rewardGems Int // Premio en diamantes
+
+  // Lógica de validación
+  conditionType  ActionType
+  conditionValue Int        @default(1) // ej: 5 postulaciones
+
+  isActive Boolean @default(true)
+
+  userProgress UserQuest[]
+}
+
+// Progreso individual del usuario
+model UserQuest {
+  id     String @id @default(cuid())
+  userId String
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  questId String
+  quest   Quest  @relation(fields: [questId], references: [id], onDelete: Cascade)
+
+  progress    Int       @default(0)
+  isCompleted Boolean   @default(false)
+  completedAt DateTime?
+
+  @@unique([userId, questId])
+  @@index([userId])
 }

@@ -1,14 +1,16 @@
-"use client";
-
+import { auth } from "@/auth";
 import { CvDropBox } from "@/components/CvDropBox";
 import { CvList } from "@/components/CvList";
 import { DesiredPositions } from "@/components/DesiredPositions";
 
-export default function ProfilePage() {
+export default async function ProfilePage() {
+    const session = await auth();
+    const userName = session?.user?.name;
+
     return (
         <div className="container mx-auto px-4 py-8 space-y-12">
             <h1 className="text-4xl font-bold tracking-tight bg-clip-text text-transparent bg-gradient-to-r from-primary to-primary/60 text-black dark:text-white">
-                Mi Perfil
+                Mi Perfil{userName ? ` - ${userName}` : ''}
             </h1>
             
             <div className="grid grid-cols-1 md:grid-cols-2 gap-8 items-start">

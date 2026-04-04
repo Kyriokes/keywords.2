@@ -1,38 +1,47 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useMemo, useState } from "react";
 import { useApplicationStore } from "@/store/applicationStore";
-import { usePositionStore } from "@/store/PositionStore";
 import { useStatsStore } from "@/store/statsStore";
+import { useCvStore } from "@/store/cvStore";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Label } from "@/components/ui/label";
-import {
-    Select,
-    SelectContent,
-    SelectItem,
-    SelectTrigger,
-    SelectValue,
-} from "@/components/ui/select";
 import { processJobApplication } from "@/lib/ia/controller";
 import { toast } from "sonner";
 import { Loader2 } from "lucide-react";
+import { getKeywordStats } from "@/lib/stats/keywordAnalysis";
 
 export default function AddJobPage() {
-    const { setPendingApplication } = useApplicationStore();
-    const { positions, fetchPositions } = usePositionStore();
+    const { setPendingApplication, applications } = useApplicationStore();
+    const { cvs } = useCvStore();
     const { logGeneration } = useStatsStore();
 
     const [rawText, setRawText] = useState("");
     const [link, setLink] = useState("");
-    const [selectedPosition, setSelectedPosition] = useState<string>("");
     const [isProcessing, setIsProcessing] = useState(false);
-    const [autoSelect, setAutoSelect] = useState(false);
 
-    useEffect(() => {
-        fetchPositions();
-    }, [fetchPositions]);
+    const activeCv = useMemo(() =>
+        cvs.find(c => c.isPrimary) || cvs[0] || null,
+    [cvs]);
+
+    const cvKeywords = activeCv?.keywords || [];
+
+    const keywordStats = useMemo(
+        () => getKeywordStats(applications, cvKeywords),
+        [applications, cvKeywords]
+    );
+
+    const matched = useMemo(
+        () => keywordStats.filter(item => item.inCv).slice(0, 5),
+        [keywordStats]
+    );
+
+    const missing = useMemo(
+        () => keywordStats.filter(item => !item.inCv).slice(0, 5),
+        [keywordStats]
+    );
 
     const handleProcess = async () => {
         if (!rawText.trim()) {
@@ -43,10 +52,6 @@ export default function AddJobPage() {
             toast.error("Por favor, ingresa el link de la publicación.");
             return;
         }
-        if (!autoSelect && !selectedPosition) {
-            toast.error("Por favor, selecciona un puesto.");
-            return;
-        }
 
         setIsProcessing(true);
         try {
@@ -54,22 +59,22 @@ export default function AddJobPage() {
             const aiResponse = await processJobApplication(
                 "Oferta Laboral",
                 rawText,
-                autoSelect ? { autoSelect: true, candidatePositions: positions } : undefined
+                { autoSelect: true, candidatePositions: [] } // Siempre usamos el prompt auto para extraer el título real
             );
             
-            const chosenPosition = autoSelect ? (aiResponse.puesto || "otros") : selectedPosition;
+            const rawJobTitle = aiResponse.puesto || "Oferta Laboral";
             const provider = aiResponse.provider || "unknown";
-
+            
             // Log stats
             logGeneration(provider);
 
             // Set pending instead of adding directly
             setPendingApplication({
                 data: {
-                    jobTitle: chosenPosition || "otros",
+                    jobTitle: rawJobTitle,
                     jobDescription: rawText,
                     detectedWords: aiResponse.palabrasClave.map(k => k.nombre),
-                    positionId: chosenPosition,
+                    positionId: undefined,
                     link: link.trim()
                 },
                 providerUsed: provider,
@@ -98,96 +103,98 @@ export default function AddJobPage() {
     };
 
     return (
-        <div className="container mx-auto px-4 py-8 max-w-2xl space-y-8">
+        <div className="container mx-auto px-4 py-8 max-w-5xl space-y-8">
             <h1 className="text-3xl font-bold text-center">Cargar Nueva Postulación</h1>
 
-            <div className="space-y-4">
-                <div className="space-y-2">
-                    <Label htmlFor="position">Puesto Objetivo</Label>
-                    <div className="flex items-center gap-4">
-                        <div className="flex-1">
-                            <Select
-                                value={selectedPosition}
-                                onValueChange={autoSelect ? () => {} : setSelectedPosition}
-                            >
-                                <SelectTrigger className={autoSelect ? "pointer-events-none opacity-50" : ""}>
-                                    <SelectValue placeholder="Selecciona el puesto..." />
-                                </SelectTrigger>
-                                <SelectContent>
-                                    <SelectItem value="otros">Otros</SelectItem>
-                                    {positions.map((pos) => (
-                                        <SelectItem key={pos} value={pos}>
-                                            {pos}
-                                        </SelectItem>
-                                    ))}
-                                </SelectContent>
-                            </Select>
+            <div className="grid grid-cols-1 lg:grid-cols-[minmax(0,1fr)_320px] gap-6 items-start">
+                    <div className="space-y-4 max-w-2xl">
+                        <div className="space-y-2">
+                            <Label htmlFor="jobLink">Link de la Publicación</Label>
+                            <Input
+                                id="jobLink"
+                                placeholder="https://..."
+                                value={link}
+                                onChange={(e) => setLink(e.target.value)}
+                            />
                         </div>
-                        <div className="flex items-center gap-2">
-                            <span className="text-sm text-muted-foreground">Dejar que la IA decida</span>
-                            <button
-                                type="button"
-                                onClick={() => {
-                                    const next = !autoSelect;
-                                    setAutoSelect(next);
-                                    if (next) setSelectedPosition("");
-                                }}
-                                aria-pressed={autoSelect}
-                                className={`relative inline-flex h-6 w-10 rounded-full transition-colors ${
-                                    autoSelect ? "bg-primary" : "bg-muted"
-                                }`}
-                            >
-                                <span
-                                    className={`absolute top-0.5 h-5 w-5 rounded-full bg-background shadow transition-transform ${
-                                        autoSelect ? "translate-x-5" : "translate-x-0.5"
-                                    }`}
-                                />
-                            </button>
+
+                        <div className="space-y-2">
+                            <Label htmlFor="jobText">Texto de la Oferta (Título + Descripción)</Label>
+                            <Textarea
+                                id="jobText"
+                                placeholder="Pega aquí todo el contenido de la oferta..."
+                                className="min-h-[300px]"
+                                value={rawText}
+                                onChange={(e) => setRawText(e.target.value)}
+                            />
                         </div>
+
+                        <Button
+                            className="w-full"
+                            size="lg"
+                            onClick={handleProcess}
+                            disabled={isProcessing}
+                        >
+                            {isProcessing ? (
+                                <>
+                                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                                    Procesando con IA...
+                                </>
+                            ) : (
+                                "Procesar y Guardar"
+                            )}
+                        </Button>
                     </div>
-                    {positions.length === 0 && (
-                        <p className="text-sm text-muted-foreground">
-                            No tienes puestos creados. Ve al <a href="/user/dashboard" className="text-primary hover:underline">Dashboard</a> para crear uno.
-                        </p>
-                    )}
-                </div>
 
-                <div className="space-y-2">
-                    <Label htmlFor="jobLink">Link de la Publicación</Label>
-                    <Input
-                        id="jobLink"
-                        placeholder="https://..."
-                        value={link}
-                        onChange={(e) => setLink(e.target.value)}
-                    />
-                </div>
-
-                <div className="space-y-2">
-                    <Label htmlFor="jobText">Texto de la Oferta (Título + Descripción)</Label>
-                    <Textarea
-                        id="jobText"
-                        placeholder="Pega aquí todo el contenido de la oferta..."
-                        className="min-h-[300px]"
-                        value={rawText}
-                        onChange={(e) => setRawText(e.target.value)}
-                    />
-                </div>
-
-                <Button 
-                    className="w-full" 
-                    size="lg" 
-                    onClick={handleProcess} 
-                    disabled={isProcessing}
-                >
-                    {isProcessing ? (
-                        <>
-                            <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                            Procesando con IA...
-                        </>
-                    ) : (
-                        "Procesar y Guardar"
-                    )}
-                </Button>
+                    <aside className="w-full max-w-sm mt-2 lg:mt-5 lg:ml-auto lg:sticky lg:top-6">
+                        <div className="rounded-lg border bg-card p-4 space-y-4">
+                            <p className="text-sm font-medium">Así estás frente a lo que pide el mercado 👇</p>
+                            {cvs.length === 0 ? (
+                                <div className="space-y-1 text-sm text-muted-foreground">
+                                    <p>Aún no tenés un CV cargado.</p>
+                                    <p>Andá a "Mi Perfil" para cargar tu CV y ver coincidencias.</p>
+                                </div>
+                            ) : keywordStats.length === 0 ? (
+                                <div className="space-y-1 text-sm text-muted-foreground">
+                                    <p>Todavía no hay suficiente información.</p>
+                                    <p>Cargá algunas postulaciones para ver insights.</p>
+                                </div>
+                            ) : (
+                                <div className="space-y-4">
+                                    <div className="space-y-2">
+                                        <h3 className="text-sm font-semibold text-green-600">Ya tenés</h3>
+                                        {matched.length > 0 ? (
+                                            <div className="space-y-1">
+                                                {matched.map((item) => (
+                                                    <p key={item.normalizedName} className="text-green-600">
+                                                        <span className="font-semibold">+ {item.name}</span>
+                                                        <span className="ml-1 text-xs opacity-80">({item.value})</span>
+                                                    </p>
+                                                ))}
+                                            </div>
+                                        ) : (
+                                            <p className="text-sm text-muted-foreground">No hay coincidencias por ahora.</p>
+                                        )}
+                                    </div>
+                                    <div className="space-y-2">
+                                        <h3 className="text-sm font-semibold text-red-600">Te está faltando</h3>
+                                        {missing.length > 0 ? (
+                                            <div className="space-y-1">
+                                                {missing.map((item) => (
+                                                    <p key={item.normalizedName} className="text-red-600">
+                                                        <span className="font-semibold">- {item.name}</span>
+                                                        <span className="ml-1 text-xs opacity-80">({item.value})</span>
+                                                    </p>
+                                                ))}
+                                            </div>
+                                        ) : (
+                                            <p className="text-sm text-muted-foreground">¡Vas muy bien! No hay faltantes destacados.</p>
+                                        )}
+                                    </div>
+                                </div>
+                            )}
+                        </div>
+                    </aside>
             </div>
         </div>
     );

@@ -6,7 +6,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Cell } from 'recharts';
 import { useMemo } from "react";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { normalizeKeyword } from "@/lib/utils";
+import { getKeywordStats } from "@/lib/stats/keywordAnalysis";
 
 export function StatsView() {
     const { applications } = useApplicationStore();
@@ -19,24 +19,10 @@ export function StatsView() {
     const cvKeywords = activeCv?.keywords || [];
 
     // 1. Ranking de Keywords (Detectadas en ofertas)
-    const keywordStats = useMemo(() => {
-        const frequencyMap = new Map<string, number>();
-        applications.forEach(app => {
-            app.detectedWords.forEach(word => {
-                frequencyMap.set(word, (frequencyMap.get(word) || 0) + 1);
-            });
-        });
-
-        // Convertir a array y ordenar
-        return Array.from(frequencyMap.entries())
-            .map(([name, value]) => ({ 
-                name, 
-                value,
-                inCv: cvKeywords.some(k => normalizeKeyword(k) === normalizeKeyword(name))
-            }))
-            .sort((a, b) => b.value - a.value)
-            .slice(0, 10); // Top 10
-    }, [applications, cvKeywords]);
+    const keywordStats = useMemo(
+        () => getKeywordStats(applications, cvKeywords).slice(0, 10),
+        [applications, cvKeywords]
+    );
 
     // 2. Porcentaje de Coincidencia (Placeholder lógica simple)
     // Calcula qué porcentaje de las keywords TOP 10 de las ofertas tienes en tu CV

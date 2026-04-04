@@ -1,7 +1,11 @@
 export function Footer() {
     return (
-        <footer className="border-t bg-background mt-10">
-            <div className="container mx-auto px-4 py-6 text-center text-sm text-muted-foreground space-y-2">
+        <footer className="mt-10 border-t bg-background">
+            <div className="container mx-auto space-y-3 px-4 py-6 text-center text-sm text-muted-foreground">
+                <p>
+                    KeyWords · Organizá tus postulaciones y descubrí qué mejorar.
+                </p>
+
                 <p>
                     Hecho con ❤️ por{" "}
                     <span className="font-medium">Sergio Ferrari</span>
@@ -11,6 +15,7 @@ export function Footer() {
                     <a
                         href="https://github.com/kyriokes"
                         target="_blank"
+                        rel="noreferrer"
                         className="hover:underline"
                     >
                         GitHub
@@ -19,15 +24,11 @@ export function Footer() {
                     <a
                         href="https://linkedin.com/in/sergiofb"
                         target="_blank"
+                        rel="noreferrer"
                         className="hover:underline"
                     >
                         LinkedIn
                     </a>
-
-                    {/* Placeholder para MercadoPago / ML */}
-                    <span className="italic">
-                        Donaciones (ML) — próximamente
-                    </span>
                 </div>
             </div>
         </footer>
