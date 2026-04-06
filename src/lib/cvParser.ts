@@ -1,6 +1,7 @@
 export interface ParsedCv {
   text: string;
   keywords: string[];
+  keywordCounts?: Record<string, number>;
 }
 
 export const parseCv = async (file: File): Promise<ParsedCv> => {
