@@ -190,6 +190,7 @@ model Keyword {
   id            String  @id @default(cuid())
   canonicalText String  @unique // Texto oficial/canónico (ej: "react")
   category      String? // Opcional: Clasificación (Tecnología, Soft Skill, Idioma)
+  isApproved    Boolean @default(false)
 
   // Relación 1:N con Alias (Familias Semánticas)
   aliases KeywordAlias[]
