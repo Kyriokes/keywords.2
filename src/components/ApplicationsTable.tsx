@@ -22,13 +22,29 @@ import {
 } from "@/components/ui/table";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle, CardFooter } from "@/components/ui/card";
 import { ArrowUpDown, ExternalLink, Trash2, X, Eye } from "lucide-react";
-import { JobApplication, useApplicationStore } from "@/store/applicationStore";
+import { ApplicationStatus, JobApplication, useApplicationStore } from "@/store/applicationStore";
 import { toast } from "sonner";
 
+const STATUS_OPTIONS: { value: ApplicationStatus; label: string }[] = [
+  { value: "APPLIED", label: "Enviada" },
+  { value: "INTERVIEW", label: "Entrevista" },
+  { value: "SAVED", label: "Guardada" },
+  { value: "REJECTED", label: "Rechazada" },
+];
+
+const VALID_STATUS_VALUES = new Set<ApplicationStatus>(STATUS_OPTIONS.map((option) => option.value));
+const STATUS_COLOR_CLASS: Record<ApplicationStatus, string> = {
+  APPLIED: "text-primary",
+  INTERVIEW: "text-amber-600",
+  SAVED: "text-muted-foreground",
+  REJECTED: "text-red-600",
+};
+
 export function ApplicationsTable() {
-  const { applications, removeApplication } = useApplicationStore();
+  const { applications, removeApplication, updateApplicationStatus } = useApplicationStore();
   const [sorting, setSorting] = useState<SortingState>([]);
   const [columnFilters, setColumnFilters] = useState<ColumnFiltersState>([]);
   const [globalFilter, setGlobalFilter] = useState("");
@@ -45,6 +61,18 @@ export function ApplicationsTable() {
       removeApplication(id);
       toast.success("Postulación eliminada");
   }
+
+  const handleStatusChange = async (id: string, status: ApplicationStatus) => {
+    try {
+      await updateApplicationStatus(id, status);
+      toast.success("Estado actualizado");
+    } catch {
+      toast.error("No se pudo actualizar el estado");
+    }
+  };
+
+  const getSafeStatus = (status: string | undefined): ApplicationStatus =>
+    VALID_STATUS_VALUES.has(status as ApplicationStatus) ? (status as ApplicationStatus) : "APPLIED";
 
   const columns: ColumnDef<JobApplication>[] = [
     {
@@ -108,6 +136,37 @@ export function ApplicationsTable() {
           >
             Ver <ExternalLink className="w-3 h-3" />
           </a>
+        );
+      },
+    },
+    {
+      id: "status",
+      header: () => <div className="text-right">Estado</div>,
+      cell: ({ row }) => {
+        const app = row.original;
+        const currentStatus = getSafeStatus(app.status);
+        return (
+          <div className="flex justify-end">
+            <Select
+              value={currentStatus}
+              onValueChange={(value) => handleStatusChange(app.id, value as ApplicationStatus)}
+            >
+              <SelectTrigger className={`w-[140px] ${STATUS_COLOR_CLASS[currentStatus]}`}>
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                {STATUS_OPTIONS.map((option) => (
+                  <SelectItem
+                    key={option.value}
+                    value={option.value}
+                    className={STATUS_COLOR_CLASS[option.value]}
+                  >
+                    {option.label}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
         );
       },
     },
