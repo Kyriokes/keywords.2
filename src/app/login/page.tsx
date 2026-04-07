@@ -23,7 +23,6 @@ export default function LoginPage() {
               "use server";
               await signIn("google", { redirectTo: "/user/dashboard" });
             }}
-            className="space-y-4"
           >
             <Button type="submit" className="w-full">
               Continuar con Google

@@ -1,4 +1,5 @@
 import Google from "next-auth/providers/google";
+import LinkedIn from "next-auth/providers/linkedin";
 import type { NextAuthConfig } from "next-auth";
 
 export default {
@@ -6,6 +7,15 @@ export default {
     Google({
       clientId: process.env.GOOGLE_CLIENT_ID,
       clientSecret: process.env.GOOGLE_CLIENT_SECRET,
+    }),
+    LinkedIn({
+      clientId: process.env.LINKEDIN_CLIENT_ID,
+      clientSecret: process.env.LINKEDIN_CLIENT_SECRET,
+      authorization: {
+        params: {
+          scope: "openid profile email",
+        },
+      },
     }),
   ],
   pages: {
