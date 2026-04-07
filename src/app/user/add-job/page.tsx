@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useApplicationStore } from "@/store/applicationStore";
 import { useStatsStore } from "@/store/statsStore";
 import { useCvStore } from "@/store/cvStore";
@@ -14,13 +14,29 @@ import { Loader2 } from "lucide-react";
 import { getKeywordStats } from "@/lib/stats/keywordAnalysis";
 
 export default function AddJobPage() {
-    const { setPendingApplication, applications } = useApplicationStore();
-    const { cvs } = useCvStore();
+    const { setPendingApplication, applications, fetchApplications } = useApplicationStore();
+    const { cvs, fetchCVs } = useCvStore();
     const { logGeneration } = useStatsStore();
 
     const [rawText, setRawText] = useState("");
     const [link, setLink] = useState("");
     const [isProcessing, setIsProcessing] = useState(false);
+    const [isHydrating, setIsHydrating] = useState(true);
+
+    useEffect(() => {
+        let cancelled = false;
+
+        Promise.all([fetchApplications(), fetchCVs()])
+            .finally(() => {
+                if (!cancelled) {
+                    setIsHydrating(false);
+                }
+            });
+
+        return () => {
+            cancelled = true;
+        };
+    }, [fetchApplications, fetchCVs]);
 
     const activeCv = useMemo(() =>
         cvs.find(c => c.isPrimary) || cvs[0] || null,
@@ -149,7 +165,11 @@ export default function AddJobPage() {
                     <aside className="w-full max-w-sm mt-2 lg:mt-5 lg:ml-auto lg:sticky lg:top-6">
                         <div className="rounded-lg border bg-card p-4 space-y-4">
                             <p className="text-sm font-medium">Así estás frente a lo que pide el mercado 👇</p>
-                            {cvs.length === 0 ? (
+                            {isHydrating ? (
+                                <div className="space-y-1 text-sm text-muted-foreground">
+                                    <p>Cargando información...</p>
+                                </div>
+                            ) : cvs.length === 0 ? (
                                 <div className="space-y-1 text-sm text-muted-foreground">
                                     <p>Aún no tenés un CV cargado.</p>
                                     <p>Andá a "Mi Perfil" para cargar tu CV y ver coincidencias.</p>

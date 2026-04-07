@@ -1,5 +1,7 @@
 import { create } from 'zustand';
-import { createApplication, getApplications, deleteApplication, clearApplications } from '@/actions/application-actions';
+import { createApplication, getApplications, deleteApplication, clearApplications, updateApplicationStatus as updateApplicationStatusAction } from '@/actions/application-actions';
+
+export type ApplicationStatus = 'APPLIED' | 'INTERVIEW' | 'SAVED' | 'REJECTED';
 
 export interface JobApplication {
   id: string;
@@ -10,10 +12,11 @@ export interface JobApplication {
   detectedWords: string[];
   positionId?: string;
   provider?: string;
+  status: string;
 }
 
 export interface PendingApplication {
-  data: Omit<JobApplication, 'id' | 'date'>;
+  data: Omit<JobApplication, 'id' | 'date' | 'status'>;
   providerUsed: string;
   excludedProviders: string[];
 }
@@ -25,9 +28,10 @@ interface ApplicationState {
 
   // Actions
   fetchApplications: () => Promise<void>;
-  addApplication: (appData: Omit<JobApplication, 'id' | 'date' | 'detectedWords'> & { detectedWords?: string[], provider?: string }) => Promise<void>;
+  addApplication: (appData: Omit<JobApplication, 'id' | 'date' | 'detectedWords' | 'status'> & { detectedWords?: string[], provider?: string }) => Promise<void>;
   removeApplication: (id: string) => Promise<void>;
   clearAllApplications: () => Promise<void>;
+  updateApplicationStatus: (id: string, status: ApplicationStatus) => Promise<void>;
   setPendingApplication: (app: PendingApplication | null) => void;
 }
 
@@ -106,6 +110,33 @@ export const useApplicationStore = create<ApplicationState>((set, get) => ({
       throw error;
     } finally {
       set({ isLoading: false });
+    }
+  },
+
+  updateApplicationStatus: async (id, status) => {
+    const previousStatus = get().applications.find((app) => app.id === id)?.status;
+    if (!previousStatus || previousStatus === status) return;
+
+    set((state) => ({
+      applications: state.applications.map((app) =>
+        app.id === id ? { ...app, status } : app
+      ),
+    }));
+
+    try {
+      const updated = await updateApplicationStatusAction(id, status);
+      set((state) => ({
+        applications: state.applications.map((app) =>
+          app.id === id ? { ...app, status: updated.status || status } : app
+        ),
+      }));
+    } catch (error) {
+      set((state) => ({
+        applications: state.applications.map((app) =>
+          app.id === id ? { ...app, status: previousStatus } : app
+        ),
+      }));
+      throw error;
     }
   },
 

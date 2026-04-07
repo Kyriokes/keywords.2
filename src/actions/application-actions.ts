@@ -15,6 +15,9 @@ export interface CreateApplicationData {
 
 import { providerManager } from "@/lib/ia/providerManager"
 
+const VALID_APPLICATION_STATUSES = ["APPLIED", "INTERVIEW", "SAVED", "REJECTED"] as const
+type ValidApplicationStatus = typeof VALID_APPLICATION_STATUSES[number]
+
 export async function createApplication(data: CreateApplicationData) {
   const session = await auth()
   if (!session?.user?.id) throw new Error("Unauthorized")
@@ -107,7 +110,8 @@ export async function createApplication(data: CreateApplicationData) {
       link: newApp.link || undefined,
       detectedWords: newApp.keywords.map((k: { keyword: { canonicalText: string } }) => k.keyword.canonicalText),
       positionId: newApp.position?.title || newApp.originalPositionTitle || undefined,
-      provider: newApp.provider || undefined
+      provider: newApp.provider || undefined,
+      status: newApp.status || "APPLIED"
   }
 }
 
@@ -138,7 +142,8 @@ export async function getApplications() {
         link: app.link || undefined,
         detectedWords: app.keywords.map((k: { keyword: { canonicalText: string } }) => k.keyword.canonicalText),
         positionId: app.position?.title || app.originalPositionTitle || undefined,
-        provider: app.provider || undefined
+        provider: app.provider || undefined,
+        status: app.status || "APPLIED"
     }))
 }
 
@@ -185,4 +190,39 @@ export async function clearApplications() {
 
     revalidatePath('/user/dashboard')
     return { success: true }
+}
+
+export async function updateApplicationStatus(id: string, status: string) {
+    const session = await auth()
+    if (!session?.user?.id) throw new Error("Unauthorized")
+
+    if (!VALID_APPLICATION_STATUSES.includes(status as ValidApplicationStatus)) {
+      throw new Error("Invalid status")
+    }
+
+    const profile = await prisma.profile.findUnique({
+      where: { userId: session.user.id }
+    })
+
+    if (!profile) throw new Error("Profile not found")
+
+    const app = await prisma.jobApplication.findUnique({
+      where: { id }
+    })
+
+    if (!app || app.profileId !== profile.id) {
+      throw new Error("Unauthorized")
+    }
+
+    const updated = await prisma.jobApplication.update({
+      where: { id },
+      data: { status }
+    })
+
+    revalidatePath('/user/dashboard')
+
+    return {
+      id: updated.id,
+      status: updated.status || "APPLIED"
+    }
 }

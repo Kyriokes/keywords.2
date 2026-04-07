@@ -1,6 +1,19 @@
 import * as XLSX from "xlsx";
 import { JobApplication } from "@/store/applicationStore";
 
+const VALID_APPLICATION_STATUSES = new Set(["APPLIED", "INTERVIEW", "SAVED", "REJECTED"]);
+
+function normalizeImportedStatus(value: unknown): string {
+    if (typeof value !== "string") return "APPLIED";
+    const normalized = value.trim().toUpperCase();
+    if (VALID_APPLICATION_STATUSES.has(normalized)) return normalized;
+    if (normalized === "ENVIADA") return "APPLIED";
+    if (normalized === "ENTREVISTA") return "INTERVIEW";
+    if (normalized === "GUARDADA") return "SAVED";
+    if (normalized === "RECHAZADA") return "REJECTED";
+    return "APPLIED";
+}
+
 export function exportToExcel(
     applications: JobApplication[],
     cvKeywords: string[],
@@ -13,6 +26,7 @@ export function exportToExcel(
         Link: app.link,
         "Job Title": app.jobTitle,
         "Job Description": app.jobDescription,
+        Status: app.status || "APPLIED",
         "Detected Words": app.detectedWords.join(", ")
     }));
     const wsApps = XLSX.utils.json_to_sheet(appsData);
@@ -68,6 +82,7 @@ export async function importFromExcel(file: File): Promise<{
         jobTitle: row["Job Title"] || "Sin Título",
         jobDescription: row["Job Description"] || "",
         link: row["Link"],
+        status: normalizeImportedStatus(row["Status"]),
         detectedWords: row["Detected Words"]
             ? String(row["Detected Words"]).split(",").map((s: string) => s.trim()).filter(Boolean)
             : [],
