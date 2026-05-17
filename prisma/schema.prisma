@@ -29,6 +29,11 @@ model User {
   passwordHash  String? // Opcional, para login con email/pass
   role          UserRole  @default(HUNTER)
 
+  // Manejo de Uso Gratuito
+  dailyAnalysesUsed  Int       @default(0)
+  dailyAnalysesLimit Int       @default(20)
+  dailyAnalysesDate  DateTime?
+
   // Relaciones de NextAuth
   accounts Account[]
   sessions Session[]

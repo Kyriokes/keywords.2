@@ -75,11 +75,16 @@ export function Navbar({ session }: NavbarProps) {
                             Cerrar Sesión
                         </Button>
                     ) : (
-                        <Link href="/login">
-                            <Button variant={isHome ? "default" : "outline"}>
-                                {isHome ? 'Empezar gratis' : 'Iniciar Sesión'}
-                            </Button>
-                        </Link>
+                        <div className="flex items-center gap-2">
+                            <span className="rounded-full border border-primary/30 bg-primary/10 px-2.5 py-1 text-xs font-medium text-primary">
+                                Empezá gratis
+                            </span>
+                            <Link href="/login">
+                                <Button variant="default">
+                                    Iniciar Sesión
+                                </Button>
+                            </Link>
+                        </div>
                     )}
                 </div>
             </div>

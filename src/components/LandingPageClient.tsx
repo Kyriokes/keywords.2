@@ -13,11 +13,11 @@ interface LandingPageClientProps {
 export function LandingPageClient({ isLoggedIn }: LandingPageClientProps) {
   const primaryCta = isLoggedIn
     ? { href: '/user/dashboard', label: 'Ir a Mis Postulaciones' }
-    : { href: '/login', label: 'Empezar gratis' };
+    : { href: '/login', label: 'Iniciar sesión' };
 
   const secondaryCta = isLoggedIn
     ? { href: '/user/profile', label: 'Ver mi perfil' }
-    : { href: '/login', label: 'Ya tengo cuenta' };
+    : { href: '/#como-funciona', label: 'Cómo funciona' };
 
   const steps = [
     {
@@ -32,7 +32,7 @@ export function LandingPageClient({ isLoggedIn }: LandingPageClientProps) {
     },
     {
       icon: Sparkles,
-      title: 'Recibís insights',
+      title: 'Recibís recomendaciones',
       description: 'Descubrí qué habilidades te faltan y qué está pidiendo el mercado.',
     },
   ];
@@ -54,7 +54,7 @@ export function LandingPageClient({ isLoggedIn }: LandingPageClientProps) {
       >
         <motion.section
           variants={itemVariants}
-          className="grid gap-12 lg:grid-cols-[1.1fr_0.9fr] lg:items-center"
+          className="space-y-8"
         >
           <div className="space-y-8 text-center lg:text-left">
             <div className="space-y-4">
@@ -66,7 +66,7 @@ export function LandingPageClient({ isLoggedIn }: LandingPageClientProps) {
                   Organizá tu búsqueda laboral y descubrí por qué no estás quedando.
                 </h1>
                 <p className="mx-auto max-w-2xl text-lg leading-8 text-muted-foreground lg:mx-0">
-                  Guardá cada postulación, analizá qué pide el mercado y obtené insights
+                  Guardá cada postulación, analizá qué pide el mercado y obtené recomendaciones
   concretos sobre qué mejorar en tu perfil.
                 </p>
               </div>
@@ -93,7 +93,39 @@ export function LandingPageClient({ isLoggedIn }: LandingPageClientProps) {
               </div>
             </div>
           </div>
+        </motion.section>
 
+        <motion.section variants={itemVariants} id="como-funciona" className="space-y-8">
+          <div className="mx-auto max-w-2xl space-y-3 text-center">
+            <p className="text-sm font-medium uppercase tracking-[0.2em] text-primary">
+              Cómo funciona
+            </p>
+            <h2 className="text-3xl font-semibold tracking-tight text-foreground sm:text-4xl">
+              Tres pasos para ordenar tu búsqueda
+            </h2>
+            <p className="text-lg text-muted-foreground">
+              Todo está pensado para que entiendas rápido tu situación y tomes mejores
+              decisiones en cada postulación.
+            </p>
+          </div>
+
+          <div className="grid gap-6 md:grid-cols-3">
+            {steps.map(({ icon: Icon, title, description }, index) => (
+              <div key={title} className="rounded-2xl border bg-background p-6 shadow-sm">
+                <div className="mb-5 flex items-center justify-between">
+                  <div className="flex size-11 items-center justify-center rounded-2xl bg-primary/10 text-primary">
+                    <Icon className="size-5" />
+                  </div>
+                  <span className="text-sm font-medium text-muted-foreground">0{index + 1}</span>
+                </div>
+                <h3 className="text-xl font-semibold text-foreground">{title}</h3>
+                <p className="mt-3 leading-7 text-muted-foreground">{description}</p>
+              </div>
+            ))}
+          </div>
+        </motion.section>
+
+        <motion.section variants={itemVariants}>
           <div className="mx-auto w-full max-w-xl">
             <div className="overflow-hidden rounded-3xl border bg-background shadow-xl shadow-primary/5">
               <div className="flex items-center justify-between border-b bg-muted/40 px-5 py-4">
@@ -102,7 +134,7 @@ export function LandingPageClient({ isLoggedIn }: LandingPageClientProps) {
                   <p className="text-sm text-muted-foreground">Placeholder visual del producto</p>
                 </div>
                 <span className="rounded-full bg-primary/10 px-3 py-1 text-xs font-medium text-primary">
-                  Insight rápido
+                  Dato rápido
                 </span>
               </div>
 
@@ -141,36 +173,6 @@ export function LandingPageClient({ isLoggedIn }: LandingPageClientProps) {
                 </div>
               </div>
             </div>
-          </div>
-        </motion.section>
-
-        <motion.section variants={itemVariants} id="como-funciona" className="space-y-8">
-          <div className="mx-auto max-w-2xl space-y-3 text-center">
-            <p className="text-sm font-medium uppercase tracking-[0.2em] text-primary">
-              Cómo funciona
-            </p>
-            <h2 className="text-3xl font-semibold tracking-tight text-foreground sm:text-4xl">
-              Tres pasos para ordenar tu búsqueda
-            </h2>
-            <p className="text-lg text-muted-foreground">
-              Todo está pensado para que entiendas rápido tu situación y tomes mejores
-              decisiones en cada postulación.
-            </p>
-          </div>
-
-          <div className="grid gap-6 md:grid-cols-3">
-            {steps.map(({ icon: Icon, title, description }, index) => (
-              <div key={title} className="rounded-2xl border bg-background p-6 shadow-sm">
-                <div className="mb-5 flex items-center justify-between">
-                  <div className="flex size-11 items-center justify-center rounded-2xl bg-primary/10 text-primary">
-                    <Icon className="size-5" />
-                  </div>
-                  <span className="text-sm font-medium text-muted-foreground">0{index + 1}</span>
-                </div>
-                <h3 className="text-xl font-semibold text-foreground">{title}</h3>
-                <p className="mt-3 leading-7 text-muted-foreground">{description}</p>
-              </div>
-            ))}
           </div>
         </motion.section>
 

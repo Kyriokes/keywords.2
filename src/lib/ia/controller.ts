@@ -7,6 +7,7 @@ import { buildPromptManual, buildPromptAuto } from "./helpers/buildPrompt";
 import type { AiResponse } from "./types";
 import { auth } from "@/auth";
 import { providerManager } from "./providerManager";
+import { checkAndConsumeQuota } from "@/lib/quota.service";
 
 export async function processJobApplication(
     jobTitle: string,
@@ -20,6 +21,27 @@ export async function processJobApplication(
         excludeProviders?: string[];
     }
 ): Promise<AiResponse> {
+
+    // ─── 1. AUTENTICACIÓN ────────────────────────────────────────────────────
+    const session = await auth();
+    if (!session?.user?.id) {
+        throw new Error("UNAUTHENTICATED");
+    }
+
+    // ─── 2. VERIFICAR Y CONSUMIR QUOTA ──────────────────────────────────────
+    const quotaResult = await checkAndConsumeQuota(session.user.id);
+
+    if (!quotaResult.allowed) {
+        if (quotaResult.reason === "QUOTA_EXCEEDED") {
+            // Lanzamos un error serializable con los datos necesarios para la UI
+            throw new Error(
+                `QUOTA_EXCEEDED:${quotaResult.usedToday}:${quotaResult.limit}:${quotaResult.resetsAt.toISOString()}`
+            );
+        }
+        throw new Error("UNAUTHENTICATED");
+    }
+
+    // ─── 3. LLAMADA A LA IA ─────────────────────────────────────────────────
     const combined = `${jobTitle}\n\n${jobDescription}`;
     const prompt = opts?.autoSelect
         ? buildPromptAuto(combined)
@@ -32,37 +54,38 @@ export async function processJobApplication(
             timeoutMs: opts?.timeoutMs,
             excludeProviders: opts?.excludeProviders
         });
+
         const parsed = tryParseJsonFromText(raw);
         if (!validateAiResponse(parsed)) throw new Error("schema mismatch");
         
-        // Attach provider info
         parsed.provider = providerId;
-        
-        // Persistir estadística "generated"
-        try {
-            const session = await auth();
-            if (session?.user?.id) {
-                // Obtener profileId real desde la BD
-                const prisma = (await import("@/lib/prisma")).default;
-                const profile = await prisma.profile.findUnique({
-                    where: { userId: session.user.id },
-                    select: { id: true }
-                });
 
-                if (profile) {
-                    // No await para no bloquear la respuesta al usuario
-                    providerManager.persistUserStats(profile.id, providerId, 'generated').catch(console.error);
-                }
+        // ─── 4. PERSISTIR STATS (fire-and-forget) ───────────────────────────
+        try {
+            const prisma = (await import("@/lib/prisma")).default;
+            const profile = await prisma.profile.findUnique({
+                where: { userId: session.user.id },
+                select: { id: true }
+            });
+            if (profile) {
+                providerManager.persistUserStats(profile.id, providerId, 'generated').catch(console.error);
             }
         } catch (e) {
             console.error("Error logging stats:", e);
         }
 
         return parsed;
+
     } catch (err) {
+        // Si el error ya es nuestro (QUOTA_EXCEEDED, UNAUTHENTICATED), lo re-lanzamos sin envolver
+        if (err instanceof Error && (
+            err.message.startsWith("QUOTA_EXCEEDED") ||
+            err.message === "UNAUTHENTICATED"
+        )) {
+            throw err;
+        }
+
         console.error("AI controller: Error connecting to AI service:", err);
-        // Re-lanzamos el error para que la UI lo maneje y muestre la alerta al usuario.
-        // Ya no usamos el fallback silencioso.
         throw new Error("AI_SERVICE_UNAVAILABLE");
     }
 }
