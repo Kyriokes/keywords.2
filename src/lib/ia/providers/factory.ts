@@ -90,7 +90,9 @@ export function getAiProvider(excludeIds: string[] = []): AiProvider {
 
     // 4. Fallback: Ollama
     // Only if all premium are excluded, paused, or failed to instantiate
-    // (Ollama is the safety net)
-    console.log("[Factory] All premium providers unavailable. Falling back to Ollama.");
-    return new OllamaProvider();
+    if (!excludeIds.includes("ollama")) {
+        console.log("[Factory] All premium providers unavailable. Falling back to Ollama.");
+        return new OllamaProvider();
+    }
+    throw new Error("No providers available.");
 }
