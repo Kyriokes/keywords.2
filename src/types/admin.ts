@@ -1,3 +1,5 @@
+import type { JobApplication } from "@/store/applicationStore";
+import type { CV } from "@/store/cvStore";
 
 // Interfaz para la respuesta de /api/admin/ping
 export interface PingResponse {
@@ -7,11 +9,10 @@ export interface PingResponse {
 }
 
 // Interfaz para el backup completo del sistema
-// Ajusta según los tipos reales de tu store
 export interface SystemBackup {
-    applications?: any[]; // Idealmente usar Application[]
-    cvs?: any[];         // Idealmente usar Cv[]
+    applications?: JobApplication[];
+    cvs?: CV[];
     positions?: string[];
-    stats?: Record<string, any>; // Idealmente usar ProviderStats[]
+    stats?: Record<string, { generated: number; accepted: number; rejected: number }>;
     timestamp: string;
 }

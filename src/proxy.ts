@@ -8,62 +8,64 @@ import {
 
 const { auth } = NextAuth(authConfig);
 
+// Coincide con la ruta exacta o con sus subrutas ("/user" no debe matchear "/users")
+const isUnder = (pathname: string, route: string) =>
+  pathname === route || pathname.startsWith(`${route}/`);
+
 export default auth((req) => {
   const { nextUrl } = req;
-  const isLoggedIn = !!req.auth;
+  // Se exige un usuario en la sesión, no solo que `req.auth` exista
+  const isLoggedIn = !!req.auth?.user;
   const userRole = req.auth?.user?.role;
   const pathname = nextUrl.pathname;
 
   // 1. Check if the route is explicitly public
   // We can skip authentication for public routes like '/', '/login', '/api/auth'
-  const isPublicRoute = publicRoutes.some(
-    (route) => pathname === route || pathname.startsWith("/api/auth")
-  );
+  const isPublicRoute =
+    publicRoutes.includes(pathname) || isUnder(pathname, "/api/auth");
 
-  // If the user is trying to access a protected route
-  if (!isPublicRoute) {
-    if (!isLoggedIn) {
-      // Not logged in -> redirect to login
-      let callbackUrl = pathname;
-      if (nextUrl.search) {
-        callbackUrl += nextUrl.search;
-      }
-      const encodedCallbackUrl = encodeURIComponent(callbackUrl);
-      return Response.redirect(
-        new URL(`/login?callbackUrl=${encodedCallbackUrl}`, nextUrl)
-      );
+  if (isPublicRoute) {
+    return;
+  }
+
+  // Las APIs responden con un status en lugar de redirigir a una página HTML
+  const isApiRoute = isUnder(pathname, "/api");
+
+  if (!isLoggedIn) {
+    if (isApiRoute) {
+      return Response.json({ error: "Unauthorized" }, { status: 401 });
     }
 
-    // Check role-based access for the current pathname
-    // Find if the path matches any prefix in protectedRoutes
-    const protectedRoutePrefix = Object.keys(protectedRoutes).find((route) =>
-      pathname.startsWith(route)
+    // Not logged in -> redirect to login
+    let callbackUrl = pathname;
+    if (nextUrl.search) {
+      callbackUrl += nextUrl.search;
+    }
+    const encodedCallbackUrl = encodeURIComponent(callbackUrl);
+    return Response.redirect(
+      new URL(`/login?callbackUrl=${encodedCallbackUrl}`, nextUrl)
     );
+  }
 
-    if (protectedRoutePrefix) {
-      const allowedRoles = protectedRoutes[protectedRoutePrefix];
+  // Check role-based access for the current pathname
+  // Find if the path matches any prefix in protectedRoutes
+  const protectedRoutePrefix = Object.keys(protectedRoutes).find((route) =>
+    isUnder(pathname, route)
+  );
 
-      // DEBUG: Verificando permisos
-      console.log(`[Proxy] Ruta: ${pathname}`);
-      console.log(`[Proxy] Rol detectado: ${userRole}`);
-      console.log(`[Proxy] Roles permitidos: ${allowedRoles.join(", ")}`);
+  if (protectedRoutePrefix) {
+    const allowedRoles = protectedRoutes[protectedRoutePrefix];
 
-      // Si el rol es undefined, significa que la sesión no tiene el dato (sesión vieja o error de auth)
-      // En este caso, redirigimos a login para forzar refresco, o a unauthorized si queremos ser estrictos.
-      if (!userRole) {
-         console.log("[Proxy] Rol no encontrado en sesión, redirigiendo a login para refrescar token");
-         // Opción: Redirigir a login para que se regenere el token con el rol
-         // return Response.redirect(new URL("/api/auth/signout", nextUrl)); // Drástico
-         // Mejor mandamos a unauthorized con un mensaje o dejamos que falle en la siguiente linea.
+    // If the user doesn't have the required role, and is not an ADMIN.
+    // Una sesión sin rol (token viejo o error de auth) tampoco pasa.
+    const hasAccess =
+      userRole === "ADMIN" || (!!userRole && allowedRoles.includes(userRole));
+
+    if (!hasAccess) {
+      if (isApiRoute) {
+        return Response.json({ error: "Forbidden" }, { status: 403 });
       }
-
-      // If the user doesn't have the required role, and is not an ADMIN
-      if (userRole !== "ADMIN" && !allowedRoles.includes(userRole as any)) {
-        console.log("[Proxy] Acceso DENEGADO");
-        return Response.redirect(new URL(UNAUTHORIZED_REDIRECT, nextUrl));
-      }
-      
-      console.log("[Proxy] Acceso PERMITIDO");
+      return Response.redirect(new URL(UNAUTHORIZED_REDIRECT, nextUrl));
     }
   }
 
@@ -72,5 +74,7 @@ export default auth((req) => {
 
 // Invokes the proxy on all paths except for static files and next internals
 export const config = {
-  matcher: ["/((?!_next/static|_next/image|favicon.ico).*)"],
+  matcher: [
+    "/((?!_next/static|_next/image|favicon.ico|.*\\.(?:svg|png|jpg|jpeg|gif|webp|ico)$).*)",
+  ],
 };

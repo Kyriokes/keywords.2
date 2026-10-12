@@ -1,5 +1,5 @@
 import prisma from "@/lib/prisma";
-import { ActionType, LedgerReason, TokenType, Direction } from "@prisma/client";
+import { ActionType, LedgerReason, TokenType, Direction, Prisma } from "@prisma/client";
 
 interface ConsumeCreditsResult {
     success: boolean;
@@ -11,7 +11,7 @@ interface ConsumeCreditsResult {
 }
 
 /**
- * Consume créditos del usuario usando transacciones de Prisma y bloqueo pesimista.
+ * Consume créditos del usuario usando transacciones de Prisma y bloqueo optimista (Balance.version).
  * Orden de consumo: Monedas (CoinBuckets próximos a vencer) -> Diamantes (Gems)
  * 
  * @param userId ID del usuario
@@ -100,7 +100,7 @@ export async function consumeCredits(
             // 3. ESCRITURA (Mutaciones)
 
             // 3.1 Actualizar el Balance usando Optimistic Locking (version)
-            const updatedBalance = await tx.balance.update({
+            await tx.balance.update({
                 where: { 
                     userId_version: {
                         userId: balance.userId,
@@ -138,6 +138,8 @@ export async function consumeCredits(
             });
 
             // 3.4 Insertar en TokenLedger (Libro Contable)
+            // (referenceType, referenceId) es único en el ledger: un mismo consumo puede generar
+            // varias filas (una por bucket + una de diamantes), así que cada una lleva su propio sufijo.
             // Registramos un movimiento por las monedas consumidas (si hubo)
             if (totalCoinsConsumed > 0) {
                 // Idealmente, podríamos registrar un ledger entry por CADA bucket afectado para auditoría perfecta.
@@ -154,7 +156,7 @@ export async function consumeCredits(
                                 gemsDelta: 0,
                                 reason: LedgerReason.USAGE,
                                 referenceType: "usage_log",
-                                referenceId: usageLog.id,
+                                referenceId: `${usageLog.id}:bucket:${update.id}`,
                                 bucketId: update.id, // Vínculo directo al bucket consumido
                                 balanceAfterCoins: newCoinsBalance, // Nota: el saldo final tras TODA la tx
                                 balanceAfterGems: newGemsBalance
@@ -175,7 +177,7 @@ export async function consumeCredits(
                         gemsDelta: totalGemsConsumed,
                         reason: LedgerReason.USAGE,
                         referenceType: "usage_log",
-                        referenceId: usageLog.id,
+                        referenceId: `${usageLog.id}:gems`,
                         balanceAfterCoins: newCoinsBalance,
                         balanceAfterGems: newGemsBalance
                     }
@@ -196,12 +198,13 @@ export async function consumeCredits(
             timeout: 10000 // 10 segundos máximo de ejecución
         });
 
-    } catch (error: any) {
+    } catch (error: unknown) {
         console.error("Error en consumeCredits:", error);
         // Si el error es de concurrencia de Prisma (P2025), significa que el optimistic lock falló.
-        if (error.code === 'P2025') {
+        if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === 'P2025') {
             return { success: false, error: "Error de concurrencia. Por favor, intente nuevamente.", coinsConsumed: 0, gemsConsumed: 0, balanceAfterCoins: 0, balanceAfterGems: 0 };
         }
-        return { success: false, error: error.message || "Error interno", coinsConsumed: 0, gemsConsumed: 0, balanceAfterCoins: 0, balanceAfterGems: 0 };
+        const message = error instanceof Error ? error.message : "";
+        return { success: false, error: message || "Error interno", coinsConsumed: 0, gemsConsumed: 0, balanceAfterCoins: 0, balanceAfterGems: 0 };
     }
 }

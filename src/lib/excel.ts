@@ -3,6 +3,13 @@ import { JobApplication } from "@/store/applicationStore";
 
 const VALID_APPLICATION_STATUSES = new Set(["APPLIED", "INTERVIEW", "SAVED", "REJECTED"]);
 
+type SheetRow = Record<string, unknown>;
+
+// Una celda puede venir como texto, número o vacía según cómo se guardó el archivo
+function cellText(value: unknown): string {
+    return value === undefined || value === null ? "" : String(value);
+}
+
 function normalizeImportedStatus(value: unknown): string {
     if (typeof value !== "string") return "APPLIED";
     const normalized = value.trim().toUpperCase();
@@ -75,27 +82,25 @@ export async function importFromExcel(file: File): Promise<{
     const wb = XLSX.read(data);
 
     const wsApps = wb.Sheets["Job Applications"];
-    const appsJson = wsApps ? XLSX.utils.sheet_to_json<any>(wsApps) : [];
-    const applications: JobApplication[] = appsJson.map((row: any) => ({
-        id: row["Id"] || `imported-${Date.now()}-${Math.random().toString(36).substr(2, 5)}`,
-        date: row["Date"] || new Date().toISOString().split("T")[0],
-        jobTitle: row["Job Title"] || "Sin Título",
-        jobDescription: row["Job Description"] || "",
-        link: row["Link"],
+    const appsJson = wsApps ? XLSX.utils.sheet_to_json<SheetRow>(wsApps) : [];
+    const applications: JobApplication[] = appsJson.map((row) => ({
+        id: cellText(row["Id"]) || `imported-${Date.now()}-${Math.random().toString(36).substr(2, 5)}`,
+        date: cellText(row["Date"]) || new Date().toISOString().split("T")[0],
+        jobTitle: cellText(row["Job Title"]) || "Sin Título",
+        jobDescription: cellText(row["Job Description"]),
+        link: cellText(row["Link"]) || undefined,
         status: normalizeImportedStatus(row["Status"]),
-        detectedWords: row["Detected Words"]
-            ? String(row["Detected Words"]).split(",").map((s: string) => s.trim()).filter(Boolean)
-            : [],
+        detectedWords: cellText(row["Detected Words"]).split(",").map((s) => s.trim()).filter(Boolean),
         positionId: undefined
     }));
 
     const wsCv = wb.Sheets["CV"];
-    const cvJson = wsCv ? XLSX.utils.sheet_to_json<any>(wsCv) : [];
-    const cvKeywords: string[] = cvJson
-        .map((row: any) => row["words"])
-        .filter((w: any) => typeof w === "string" && w.trim().length > 0);
-    const rawTextRow = cvJson.find((row: any) => typeof row["raw text"] === "string");
-    const cvRawText: string = rawTextRow ? rawTextRow["raw text"] : "";
+    const cvJson = wsCv ? XLSX.utils.sheet_to_json<SheetRow>(wsCv) : [];
+    const cvKeywords = cvJson
+        .map((row) => row["words"])
+        .filter((w): w is string => typeof w === "string" && w.trim().length > 0);
+    const rawText = cvJson.find((row) => typeof row["raw text"] === "string")?.["raw text"];
+    const cvRawText = typeof rawText === "string" ? rawText : "";
 
     return { applications, cvKeywords, cvRawText };
 }

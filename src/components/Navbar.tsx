@@ -58,9 +58,11 @@ export function Navbar({ session }: NavbarProps) {
                             <Link href="/user/profile" className="text-muted-foreground transition-colors hover:text-primary">
                                 Mi Perfil
                             </Link>
-                            <Link href="/admin" className="hover:text-red-500 text-muted-foreground/50 transition-colors text-xs">
-                                (Admin)
-                            </Link>
+                            {session?.user?.role === "ADMIN" && (
+                                <Link href="/admin" className="hover:text-red-500 text-muted-foreground/50 transition-colors text-xs">
+                                    (Admin)
+                                </Link>
+                            )}
                         </>
                     )}
                 </nav>

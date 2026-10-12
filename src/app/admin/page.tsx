@@ -10,10 +10,9 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { Download, Upload, Trash2, RefreshCw, Activity, CheckCircle2, XCircle, AlertCircle } from "lucide-react";
 import { useRef, useState, useEffect } from "react";
 import { toast } from "sonner";
-import { ProviderState } from "@/lib/ia/providerManager";
+import type { ProviderState } from "@/lib/ia/providerManager";
+import { PROVIDER_IDS } from "@/lib/ia/providers/ids";
 import { PingResponse, SystemBackup } from "@/types/admin";
-
-const ALL_PROVIDERS = ['groq', 'gemini', 'deepseek', 'openrouter', 'huggingface', 'cerebras', 'mistral', 'cohere', 'ollama'];
 
 export default function DebugPage() {
   const { cvs, fetchCVs } = useCvStore();
@@ -236,7 +235,7 @@ export default function DebugPage() {
                         </TableRow>
                     </TableHeader>
                     <TableBody>
-                        {ALL_PROVIDERS.map((provider) => {
+                        {PROVIDER_IDS.map((provider) => {
                             const stats = providerStats[provider] || { generated: 0, accepted: 0, rejected: 0 };
                             const rate = stats.generated > 0 ? ((stats.accepted / stats.generated) * 100).toFixed(1) : "N/A";
                             const ping = pingResults[provider];

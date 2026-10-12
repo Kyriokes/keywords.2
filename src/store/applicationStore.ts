@@ -60,11 +60,11 @@ export const useApplicationStore = create<ApplicationState>((set, get) => ({
           const exists = get().applications.some(
               (a) => a.link?.trim().toLowerCase() === appData.link?.trim().toLowerCase()
           );
-          if (exists) throw new Error("Duplicate link");
+          if (exists) throw new Error("Esta oferta ya existe (link duplicado).");
       }
 
       // 2. Call Server Action
-      const newApp = await createApplication({
+      const result = await createApplication({
           jobTitle: appData.jobTitle,
           jobDescription: appData.jobDescription,
           link: appData.link,
@@ -73,9 +73,12 @@ export const useApplicationStore = create<ApplicationState>((set, get) => ({
           provider: appData.provider
       });
 
+      // Los errores esperados llegan como valor: se relanzan acá con un mensaje para el usuario
+      if (!result.ok) throw new Error(result.message);
+
       // 3. Update Local State
       set((state) => ({
-        applications: [newApp, ...state.applications]
+        applications: [result.data, ...state.applications]
       }));
     } catch (error) {
       console.error('Failed to add application:', error);

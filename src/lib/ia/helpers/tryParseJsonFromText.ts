@@ -1,12 +1,12 @@
-export function tryParseJsonFromText(text: string): any {
+export function tryParseJsonFromText(text: string): unknown {
     try {
         return JSON.parse(text);
-    } catch (e) {
+    } catch {
         const m = text.match(/\{[\s\S]*\}/);
         if (m) {
             try {
                 return JSON.parse(m[0]);
-            } catch (e2) {
+            } catch {
                 // fallthrough
             }
         }

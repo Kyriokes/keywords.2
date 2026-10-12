@@ -3,6 +3,11 @@ export const dynamic = 'force-dynamic';
 
 import { NextRequest, NextResponse } from 'next/server';
 import mammoth from 'mammoth';
+import { auth } from '@/auth';
+import { isRateLimited } from '@/lib/rateLimit';
+
+const MAX_FILE_SIZE = 5 * 1024 * 1024; // 5MB
+const MAX_UPLOADS_PER_MINUTE = 10;
 
 const STOPWORDS = new Set([
     'experience', 'experiencia', 'years', 'anos', 'worked', 'trabajado', 'company', 'empresa',
@@ -10,7 +15,7 @@ const STOPWORDS = new Set([
     'responsibilities', 'responsabilidades', 'professional', 'profesional', 'work', 'trabajo',
     'working', 'trabajando', 'profile', 'perfil', 'resume', 'curriculum', 'contact', 'contacto',
     'phone', 'telefono', 'email', 'correo', 'address', 'direccion', 'city', 'ciudad',
-    'country', 'pais', 'date', 'fecha', 'sergio',
+    'country', 'pais', 'date', 'fecha',
     'de', 'of', 'la', 'el', 'los', 'las', 'the',
     'y', 'and', 'o', 'or', 'en', 'in', 'con', 'with', 'por', 'by', 'para', 'for',
     'una', 'un', 'a', 'del', 'al', 'to',
@@ -212,33 +217,50 @@ function dedupeByFirstOccurrence(canonicalTokens: string[]): string[] {
     return Array.from(orderedSet);
 }
 
-function runKeywordPipeline(text: string): { keywords: string[]; keywordCounts: Record<string, number> } {
+function runKeywordPipeline(
+    text: string,
+    ownerName: string
+): { keywords: string[]; keywordCounts: Record<string, number> } {
+    // El nombre del dueño del CV no es una keyword: se descarta igual que el resto de los datos personales
+    const ownerNameTokens = new Set(tokenize(normalizeTechnicalText(ownerName)).map(cleanToken));
+
     const normalizedText = normalizeTechnicalText(text);
     const preprocessedText = preprocessPhrases(normalizedText);
     const tokenized = tokenize(preprocessedText);
     const cleaned = tokenized.map(cleanToken);
-    const filtered = cleaned.filter(filterToken);
+    const filtered = cleaned.filter((token) => filterToken(token) && !ownerNameTokens.has(token));
     const canonicalTokens = filtered.map(canonicalizeToken);
     const keywordCounts = countOccurrences(canonicalTokens);
     const keywords = dedupeByFirstOccurrence(canonicalTokens);
     return { keywords, keywordCounts };
 }
 
+// Forma mínima de lo que usamos de pdf2json (el módulo se resuelve distinto según ESM/CJS)
+interface PdfTextRun { T?: string }
+interface PdfText { x?: number; y?: number; R?: PdfTextRun[] }
+interface PdfPage { Texts?: PdfText[] }
+interface PdfData { Pages?: PdfPage[] }
+interface PdfParser {
+    on(event: 'pdfParser_dataReady', handler: (data: PdfData) => void): void;
+    on(event: 'pdfParser_dataError', handler: (err: { parserError?: unknown }) => void): void;
+    parseBuffer(buffer: Buffer): void;
+}
+
 // Reconstrucción robusta de texto desde pdf2json (todas las páginas, todos los runs)
 async function parsePdfWithPdf2json(buffer: Buffer): Promise<{ text: string; pagesCount: number }> {
-    const mod = await import('pdf2json');
-    const PDFParser = (mod as any).default || (mod as any);
+    const mod: unknown = await import('pdf2json');
+    const PDFParser = ((mod as { default?: unknown }).default || mod) as new () => PdfParser;
     const parser = new PDFParser();
 
     return await new Promise((resolve, reject) => {
-        parser.on('pdfParser_dataReady', (data: any) => {
+        parser.on('pdfParser_dataReady', (data) => {
             const pages = Array.isArray(data?.Pages) ? data.Pages : [];
-            const pageTexts = pages.map((p: any) => {
+            const pageTexts = pages.map((p) => {
                 const texts = Array.isArray(p?.Texts) ? p.Texts : [];
-                const items = texts.map((t: any) => {
+                const items = texts.map((t) => {
                     const runs = Array.isArray(t?.R) ? t.R : [];
                     const str = runs
-                        .map((r: any) => {
+                        .map((r) => {
                             const raw = r?.T || '';
                             try {
                                 return decodeURIComponent(raw);
@@ -283,29 +305,57 @@ async function parsePdfWithPdf2json(buffer: Buffer): Promise<{ text: string; pag
             const combined = pageTexts.join('\n');
             resolve({ text: combined, pagesCount: pages.length || 0 });
         });
-        parser.on('pdfParser_dataError', (err: any) => reject(err?.parserError || err));
+        parser.on('pdfParser_dataError', (err) => reject(err?.parserError || err));
         parser.parseBuffer(buffer);
     });
 }
 
+function tooLargeResponse() {
+    return NextResponse.json(
+        { error: 'El archivo es demasiado grande. El límite es de 5MB.' },
+        { status: 413 }
+    );
+}
+
 export async function POST(req: NextRequest) {
     try {
+        const session = await auth();
+        if (!session?.user?.id) {
+            return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+        }
+
+        if (isRateLimited(`parse-cv:${session.user.id}`, MAX_UPLOADS_PER_MINUTE, 60_000)) {
+            return NextResponse.json(
+                { error: 'Demasiados archivos en poco tiempo. Esperá un minuto e intentá de nuevo.' },
+                { status: 429 }
+            );
+        }
+
         const contentType = req.headers.get('content-type') || '';
 
         if (!contentType.includes('multipart/form-data')) {
             return NextResponse.json({ error: 'Invalid content type' }, { status: 400 });
         }
 
+        // Corte temprano por tamaño declarado, antes de leer el cuerpo completo en memoria
+        if (Number(req.headers.get('content-length')) > MAX_FILE_SIZE + 1024 * 1024) {
+            return tooLargeResponse();
+        }
+
         const formData = await req.formData();
         const file = formData.get('file');
 
-        if (!(file instanceof Blob)) {
+        if (!(file instanceof File)) {
             return NextResponse.json({ error: 'Invalid file' }, { status: 400 });
+        }
+
+        if (file.size > MAX_FILE_SIZE) {
+            return tooLargeResponse();
         }
 
         const ab = await file.arrayBuffer();
         const buffer = Buffer.from(ab);
-        const fileType = (file as any).name?.split('.').pop()?.toLowerCase();
+        const fileType = file.name.split('.').pop()?.toLowerCase();
         let text = '';
 
         if (fileType === 'pdf') {
@@ -326,14 +376,14 @@ export async function POST(req: NextRequest) {
             );
         }
 
-        const { keywords, keywordCounts } = runKeywordPipeline(text);
+        const { keywords, keywordCounts } = runKeywordPipeline(text, session.user.name ?? '');
 
         return NextResponse.json({ text, keywords, keywordCounts });
 
     } catch (error) {
         console.error('Error parsing CV:', error);
         return NextResponse.json(
-            { error: 'Failed to parse file', details: error instanceof Error ? error.message : String(error) },
+            { error: 'No se pudo leer el archivo. Verificá que sea un PDF o DOCX válido.' },
             { status: 500 }
         );
     }

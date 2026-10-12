@@ -14,10 +14,8 @@ export const parseCv = async (file: File): Promise<ParsedCv> => {
   });
 
   if (!response.ok) {
-    const errorData = await response.json().catch(() => ({} as any));
-    const base = errorData.error || 'Error al procesar el archivo en el servidor';
-    const details = errorData.details ? `: ${errorData.details}` : '';
-    throw new Error(`${base}${details}`);
+    const errorData: { error?: string } = await response.json().catch(() => ({}));
+    throw new Error(errorData.error || 'Error al procesar el archivo en el servidor');
   }
 
   return await response.json();

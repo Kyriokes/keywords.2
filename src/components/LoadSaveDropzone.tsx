@@ -45,6 +45,7 @@ export function LoadSaveDropzone({ onFileSelected }: LoadSaveDropzoneProps) {
       const data = await importFromExcel(file);
       
       // Update stores
+      let imported = 0;
       for (const app of data.applications) {
           try {
               await useApplicationStore.getState().addApplication({
@@ -54,21 +55,30 @@ export function LoadSaveDropzone({ onFileSelected }: LoadSaveDropzoneProps) {
                   detectedWords: app.detectedWords || [],
                   positionId: app.positionId
               });
+              imported++;
           } catch(e) {
               console.error("Failed to import app", e);
           }
       }
-      
+
       // Import CV if exists
       if (data.cvKeywords.length > 0 || data.cvRawText) {
-          useCvStore.getState().addCv({
-              name: `Importado (${new Date().toLocaleDateString()})`,
-              keywords: data.cvKeywords,
-              text: data.cvRawText
-          });
+          try {
+              await useCvStore.getState().addCv({
+                  name: `Importado (${new Date().toLocaleDateString()})`,
+                  keywords: data.cvKeywords,
+                  text: data.cvRawText
+              });
+          } catch(e) {
+              toast.error(e instanceof Error ? e.message : "No se pudo importar el CV del archivo.");
+          }
       }
 
-      toast.success(`Datos cargados exitosamente: ${data.applications.length} postulaciones.`);
+      const skipped = data.applications.length - imported;
+      toast.success(
+          `Datos cargados exitosamente: ${imported} postulaciones.` +
+          (skipped > 0 ? ` Se omitieron ${skipped} (duplicadas o inválidas).` : '')
+      );
       onFileSelected?.(file);
     } catch (error) {
       console.error(error);

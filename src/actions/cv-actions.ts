@@ -3,10 +3,17 @@
 import { auth } from "@/auth"
 import prisma from "@/lib/prisma"
 import { revalidatePath } from "next/cache"
+import { LIMITS, uploadCvSchema, firstIssueMessage, type ActionResult } from "@/lib/validation"
 
-export async function uploadCV(data: { name: string; text: string; keywords: string[] }) {
+export async function uploadCV(data: { name: string; text: string; keywords: string[] }): Promise<ActionResult> {
   const session = await auth()
   if (!session?.user?.id) throw new Error("Unauthorized")
+
+  const parsed = uploadCvSchema.safeParse(data)
+  if (!parsed.success) {
+    return { ok: false, code: "INVALID_INPUT", message: firstIssueMessage(parsed.error) }
+  }
+  const input = parsed.data
 
   const profile = await prisma.profile.findUnique({
     where: { userId: session.user.id }
@@ -19,18 +26,26 @@ export async function uploadCV(data: { name: string; text: string; keywords: str
     where: { profileId: profile.id }
   })
 
-  const newCV = await prisma.cV.create({
+  if (count >= LIMITS.cvsPerProfile) {
+    return {
+      ok: false,
+      code: "LIMIT_REACHED",
+      message: `Alcanzaste el máximo de ${LIMITS.cvsPerProfile} CVs. Eliminá alguno para subir otro.`
+    }
+  }
+
+  await prisma.cV.create({
     data: {
-      name: data.name,
-      text: data.text,
+      name: input.name,
+      text: input.text,
       isPrimary: count === 0,
       profileId: profile.id,
       keywords: {
-        create: data.keywords.map(k => ({
+        create: input.keywords.map(k => ({
           keyword: {
             connectOrCreate: {
-              where: { canonicalText: k.toLowerCase() },
-              create: { canonicalText: k.toLowerCase() }
+              where: { canonicalText: k },
+              create: { canonicalText: k }
             }
           }
         }))
@@ -39,7 +54,7 @@ export async function uploadCV(data: { name: string; text: string; keywords: str
   })
 
   revalidatePath('/user/profile')
-  return newCV
+  return { ok: true, data: undefined }
 }
 
 export async function getCVs() {
@@ -48,7 +63,7 @@ export async function getCVs() {
 
   const profile = await prisma.profile.findUnique({
     where: { userId: session.user.id },
-    include: { 
+    include: {
       cvs: {
         orderBy: { uploadDate: 'desc' },
         include: {
@@ -58,19 +73,19 @@ export async function getCVs() {
                 }
             }
         }
-      } 
+      }
     }
   })
 
   if (!profile) return []
 
-  return profile.cvs.map((cv: any) => ({
+  return profile.cvs.map((cv) => ({
     id: cv.id,
     name: cv.name,
     text: cv.text,
     uploadDate: cv.uploadDate.getTime(),
     isPrimary: cv.isPrimary,
-    keywords: cv.keywords.map((k: { keyword: { canonicalText: string } }) => k.keyword.canonicalText)
+    keywords: cv.keywords.map((k) => k.keyword.canonicalText)
   }))
 }
 
@@ -103,7 +118,7 @@ export async function deleteCV(cvId: string) {
         where: { profileId: profile.id },
         orderBy: { uploadDate: 'desc' }
     })
-    
+
     if (nextCv) {
         await prisma.cV.update({
             where: { id: nextCv.id },

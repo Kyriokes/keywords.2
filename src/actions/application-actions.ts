@@ -2,7 +2,11 @@
 
 import { auth } from "@/auth"
 import prisma from "@/lib/prisma"
+import type { Prisma } from "@prisma/client"
 import { revalidatePath } from "next/cache"
+import { providerManager } from "@/lib/ia/providerManager"
+import { isProviderId } from "@/lib/ia/providers/ids"
+import { LIMITS, createApplicationSchema, firstIssueMessage, type ActionResult } from "@/lib/validation"
 
 export interface CreateApplicationData {
   jobTitle: string
@@ -13,14 +17,45 @@ export interface CreateApplicationData {
   provider?: string
 }
 
-import { providerManager } from "@/lib/ia/providerManager"
-
 const VALID_APPLICATION_STATUSES = ["APPLIED", "INTERVIEW", "SAVED", "REJECTED"] as const
 type ValidApplicationStatus = typeof VALID_APPLICATION_STATUSES[number]
 
-export async function createApplication(data: CreateApplicationData) {
+const applicationInclude = {
+  keywords: {
+    include: { keyword: true }
+  },
+  position: true
+} satisfies Prisma.JobApplicationInclude
+
+type ApplicationWithRelations = Prisma.JobApplicationGetPayload<{ include: typeof applicationInclude }>
+
+// Formato que espera el store del cliente
+function toStoreApplication(app: ApplicationWithRelations) {
+  return {
+    id: app.id,
+    date: app.date.toISOString().split("T")[0],
+    jobTitle: app.jobTitle,
+    jobDescription: app.jobDescription,
+    link: app.link || undefined,
+    detectedWords: app.keywords.map((k) => k.keyword.canonicalText),
+    positionId: app.position?.title || app.originalPositionTitle || undefined,
+    provider: app.provider || undefined,
+    status: app.status || "APPLIED"
+  }
+}
+
+export async function createApplication(
+  data: CreateApplicationData
+): Promise<ActionResult<ReturnType<typeof toStoreApplication>>> {
   const session = await auth()
   if (!session?.user?.id) throw new Error("Unauthorized")
+
+  const parsed = createApplicationSchema.safeParse(data)
+  if (!parsed.success) {
+    return { ok: false, code: "INVALID_INPUT", message: firstIssueMessage(parsed.error) }
+  }
+  const input = parsed.data
+  const provider = isProviderId(input.provider) ? input.provider : undefined
 
   const profile = await prisma.profile.findUnique({
     where: { userId: session.user.id }
@@ -28,30 +63,38 @@ export async function createApplication(data: CreateApplicationData) {
 
   if (!profile) throw new Error("Profile not found")
 
-  // Log acceptance if provider was used
-  if (data.provider) {
-    // Fire and forget
-    providerManager.persistUserStats(profile.id, data.provider, 'accepted').catch(console.error)
+  const total = await prisma.jobApplication.count({
+    where: { profileId: profile.id }
+  })
+  if (total >= LIMITS.applicationsPerProfile) {
+    return {
+      ok: false,
+      code: "LIMIT_REACHED",
+      message: `Alcanzaste el máximo de ${LIMITS.applicationsPerProfile} postulaciones.`
+    }
   }
 
   // Check for duplicates by link
-  if (data.link) {
+  if (input.link) {
     const exists = await prisma.jobApplication.findFirst({
       where: {
         profileId: profile.id,
-        link: data.link
-      }
+        link: { equals: input.link, mode: 'insensitive' }
+      },
+      select: { id: true }
     })
-    if (exists) throw new Error("Duplicate link")
+    if (exists) {
+      return { ok: false, code: "DUPLICATE_LINK", message: "Esta oferta ya existe (link duplicado)." }
+    }
   }
 
   // Find related Position if exists
   let positionId: string | undefined
-  if (data.positionTitle) {
+  if (input.positionTitle) {
     const position = await prisma.position.findFirst({
         where: {
             profileId: profile.id,
-            title: data.positionTitle
+            title: input.positionTitle
         }
     })
     positionId = position?.id
@@ -69,88 +112,65 @@ export async function createApplication(data: CreateApplicationData) {
   const newApp = await prisma.jobApplication.create({
     data: {
       profileId: profile.id,
-      jobTitle: data.jobTitle,
-      jobDescription: data.jobDescription,
-      link: data.link,
-      provider: data.provider,
-      
+      jobTitle: input.jobTitle,
+      jobDescription: input.jobDescription,
+      link: input.link,
+      provider,
+
       // Relations
       positionId: positionId,
-      originalPositionTitle: data.positionTitle, // Snapshot History
+      originalPositionTitle: input.positionTitle, // Snapshot History
       cvId: activeCv?.id,
-      
+
       // Keywords Relation
       keywords: {
-        create: data.detectedWords.map(k => ({
+        create: input.detectedWords.map(k => ({
           keyword: {
             connectOrCreate: {
-              where: { canonicalText: k.toLowerCase() },
-              create: { canonicalText: k.toLowerCase() }
+              where: { canonicalText: k },
+              create: { canonicalText: k }
             }
           }
         }))
       }
     },
-    include: {
-        keywords: {
-            include: { keyword: true }
-        },
-        position: true
-    }
+    include: applicationInclude
   })
 
-  revalidatePath('/user/dashboard')
-  
-  // Return formatted for store
-  return {
-      id: newApp.id,
-      date: newApp.date.toISOString().split("T")[0],
-      jobTitle: newApp.jobTitle,
-      jobDescription: newApp.jobDescription,
-      link: newApp.link || undefined,
-      detectedWords: newApp.keywords.map((k: { keyword: { canonicalText: string } }) => k.keyword.canonicalText),
-      positionId: newApp.position?.title || newApp.originalPositionTitle || undefined,
-      provider: newApp.provider || undefined,
-      status: newApp.status || "APPLIED"
+  // Log acceptance if provider was used
+  if (provider) {
+    // Fire and forget
+    providerManager.recordFeedback(profile.id, provider, 'accepted').catch(console.error)
   }
+
+  revalidatePath('/user/dashboard')
+
+  return { ok: true, data: toStoreApplication(newApp) }
 }
 
 export async function getApplications() {
     const session = await auth()
     if (!session?.user?.id) return []
-  
+
     const profile = await prisma.profile.findUnique({
       where: { userId: session.user.id },
       include: {
         applications: {
             orderBy: { date: 'desc' },
-            include: {
-                keywords: { include: { keyword: true } },
-                position: true
-            }
+            include: applicationInclude
         }
       }
     })
-  
+
     if (!profile) return []
-  
-    return profile.applications.map((app: any) => ({
-        id: app.id,
-        date: app.date.toISOString().split("T")[0],
-        jobTitle: app.jobTitle,
-        jobDescription: app.jobDescription,
-        link: app.link || undefined,
-        detectedWords: app.keywords.map((k: { keyword: { canonicalText: string } }) => k.keyword.canonicalText),
-        positionId: app.position?.title || app.originalPositionTitle || undefined,
-        provider: app.provider || undefined,
-        status: app.status || "APPLIED"
-    }))
+
+    return profile.applications.map(toStoreApplication)
 }
 
 export async function deleteApplication(id: string) {
     const session = await auth()
     if (!session?.user?.id) throw new Error("Unauthorized")
-  
+
     const profile = await prisma.profile.findUnique({
       where: { userId: session.user.id }
     })
@@ -177,7 +197,7 @@ export async function deleteApplication(id: string) {
 export async function clearApplications() {
     const session = await auth()
     if (!session?.user?.id) throw new Error("Unauthorized")
-  
+
     const profile = await prisma.profile.findUnique({
       where: { userId: session.user.id }
     })
