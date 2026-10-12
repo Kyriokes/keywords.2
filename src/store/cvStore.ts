@@ -40,7 +40,8 @@ export const useCvStore = create<CvState>((set, get) => ({
   addCv: async (cvData) => {
     set({ isLoading: true });
     try {
-      await uploadCV(cvData);
+      const result = await uploadCV(cvData);
+      if (!result.ok) throw new Error(result.message);
       await get().fetchCVs(); // Refresh list to get ID and correct state
     } catch (error) {
       console.error('Failed to upload CV:', error);

@@ -6,7 +6,7 @@ interface PositionState {
   isLoading: boolean;
   fetchPositions: () => Promise<void>;
   setPositions: (positions: string[]) => Promise<void>;
-  clearPositions: () => void;
+  clearPositions: () => Promise<void>;
 }
 
 export const usePositionStore = create<PositionState>((set) => ({
@@ -26,8 +26,10 @@ export const usePositionStore = create<PositionState>((set) => ({
   setPositions: async (newPositions) => {
     set({ isLoading: true });
     try {
-      await updatePositions(newPositions);
-      set({ positions: newPositions });
+      const result = await updatePositions(newPositions);
+      if (!result.ok) throw new Error(result.message);
+      // Se guarda lo que quedó en el servidor (sin vacíos ni duplicados)
+      set({ positions: result.data });
     } catch (error) {
       console.error('Failed to update positions:', error);
       throw error;
@@ -38,7 +40,8 @@ export const usePositionStore = create<PositionState>((set) => ({
   clearPositions: async () => {
       set({ isLoading: true });
       try {
-          await updatePositions([]);
+          const result = await updatePositions([]);
+          if (!result.ok) throw new Error(result.message);
           set({ positions: [] });
       } catch (error) {
           console.error('Failed to clear positions:', error);

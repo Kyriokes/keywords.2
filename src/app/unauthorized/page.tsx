@@ -10,7 +10,7 @@ export default function UnauthorizedPage() {
         No tienes los permisos necesarios para ver esta página. Si crees que esto es un error, contacta al administrador.
       </p>
       <Link 
-        href="/user"
+        href="/user/dashboard"
         className="px-6 py-3 bg-blue-600 text-white rounded-md hover:bg-blue-700 transition-colors"
       >
         Volver al Inicio

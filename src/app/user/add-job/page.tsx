@@ -9,7 +9,7 @@ import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Label } from "@/components/ui/label";
 import { processJobApplication } from "@/lib/ia/controller";
-import { getMyQuotaStatus } from "@/lib/quota.service";
+import { getMyQuotaStatus } from "@/actions/quota-actions";
 import { toast } from "sonner";
 import { Loader2 } from "lucide-react";
 import { getKeywordStats } from "@/lib/stats/keywordAnalysis";
@@ -38,27 +38,16 @@ export default function AddJobPage() {
         Promise.all([
             fetchApplications(),
             fetchCVs(),
-            getMyQuotaStatus().catch(() => null), // Se llama desde server action con session interna
-        ]).finally(() => {
+            // Silencioso — la quota es informativa, no bloquea la UI de cargar
+            getMyQuotaStatus().catch(() => null),
+        ]).then(([, , status]) => {
+            if (!cancelled && status) setQuota(status);
+        }).finally(() => {
             if (!cancelled) setIsHydrating(false);
         });
 
-        // Cargar quota por separado (server action con auth interna)
-        loadQuota();
-
         return () => { cancelled = true; };
     }, [fetchApplications, fetchCVs]);
-
-    const loadQuota = async () => {
-        try {
-            // getQuotaStatus se llama sin userId porque lo obtiene de la sesión internamente
-            // Si lo tenés así, pasá "" o refactorizá para que use auth() interno
-            const status = await getMyQuotaStatus();
-            if (status) setQuota(status);
-        } catch {
-            // Silencioso — la quota es informativa, no bloquea la UI de cargar
-        }
-    };
 
     const activeCv = useMemo(() =>
         cvs.find(c => c.isPrimary) || cvs[0] || null,
@@ -93,12 +82,37 @@ export default function AddJobPage() {
 
         setIsProcessing(true);
         try {
-            const aiResponse = await processJobApplication(
+            const result = await processJobApplication(
                 "Oferta Laboral",
                 rawText,
-                { autoSelect: true, candidatePositions: [] }
+                { autoSelect: true }
             );
-            
+
+            if (!result.ok) {
+                if (result.code === "QUOTA_EXCEEDED") {
+                    const resetsAtStr = result.resetsAt.toLocaleTimeString("es-AR", {
+                        hour: "2-digit",
+                        minute: "2-digit",
+                        timeZone: "America/Argentina/Buenos_Aires"
+                    });
+
+                    toast.error(
+                        `Límite diario alcanzado (${result.usedToday}/${result.limit}). Tus análisis se recargan a las ${resetsAtStr} hs.`,
+                        { duration: 6000 }
+                    );
+                    // Sincroniza el indicador con lo que dice el servidor
+                    setQuota(prev => prev && { ...prev, used: result.usedToday, limit: result.limit });
+                } else if (result.code === "AI_SERVICE_UNAVAILABLE") {
+                    toast.error("El servidor de IA no responde. Por favor, aguarda e inténtalo de nuevo más tarde.");
+                } else if (result.code === "UNAUTHENTICATED") {
+                    toast.error("Tu sesión expiró. Por favor, volvé a iniciar sesión.");
+                } else {
+                    toast.error("El texto de la oferta está vacío o es demasiado largo.");
+                }
+                return;
+            }
+
+            const aiResponse = result.data;
             const rawJobTitle = aiResponse.puesto || "Oferta Laboral";
             const provider = aiResponse.provider || "unknown";
             
@@ -126,37 +140,9 @@ export default function AddJobPage() {
                 : prev
             );
 
-        } catch (error) {
-            if (error instanceof Error) {
-                if (error.message.startsWith("QUOTA_EXCEEDED")) {
-                    // Parseamos los datos del error: QUOTA_EXCEEDED:used:limit:resetsAt
-                    const parts = error.message.split(":");
-                    const used = Number(parts[1]);
-                    const limit = Number(parts[2]);
-                    const resetsAt = new Date(parts.slice(3).join(":")); // ISO tiene ":" en la hora
-                    
-                    const resetsAtStr = resetsAt.toLocaleTimeString("es-AR", {
-                        hour: "2-digit",
-                        minute: "2-digit",
-                        timeZone: "America/Argentina/Buenos_Aires"
-                    });
-
-                    toast.error(
-                        `Límite diario alcanzado (${used}/${limit}). Tus análisis se recargan a las ${resetsAtStr} hs.`,
-                        { duration: 6000 }
-                    );
-                } else if (error.message === "Duplicate link") {
-                    toast.error("Esta oferta ya existe (link duplicado).");
-                } else if (error.message === "AI_SERVICE_UNAVAILABLE") {
-                    toast.error("El servidor de IA no responde. Por favor, aguarda e inténtalo de nuevo más tarde.");
-                } else if (error.message === "UNAUTHENTICATED") {
-                    toast.error("Tu sesión expiró. Por favor, volvé a iniciar sesión.");
-                } else {
-                    toast.error("Error al procesar la oferta.");
-                }
-            } else {
-                toast.error("Error desconocido al procesar la oferta.");
-            }
+        } catch {
+            // Los errores esperados llegan en `result`; acá solo caen fallas de red o del servidor
+            toast.error("Error al procesar la oferta.");
         } finally {
             setIsProcessing(false);
         }

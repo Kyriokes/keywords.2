@@ -2,90 +2,101 @@
 
 import { postToMcp } from "./client";
 import tryParseJsonFromText from "./helpers/tryParseJsonFromText";
-import validateAiResponse from "./helpers/validateAiResponse";
+import validateAiResponse, { limitAiResponse } from "./helpers/validateAiResponse";
 import { buildPromptManual, buildPromptAuto } from "./helpers/buildPrompt";
-import type { AiResponse } from "./types";
+import type { ProcessJobResult } from "./types";
 import { auth } from "@/auth";
+import prisma from "@/lib/prisma";
 import { providerManager } from "./providerManager";
-import { checkAndConsumeQuota } from "@/lib/quota.service";
+import { isProviderId } from "./providers/ids";
+import { checkAndConsumeQuota, refundQuota } from "@/lib/quota.service";
+import { LIMITS } from "@/lib/validation";
 
 export async function processJobApplication(
     jobTitle: string,
     jobDescription: string,
-    opts?: { 
-        mcpUrl?: string; 
-        model?: string; 
-        timeoutMs?: number; 
-        autoSelect?: boolean; 
-        candidatePositions?: string[];
+    opts?: {
+        autoSelect?: boolean;
         excludeProviders?: string[];
     }
-): Promise<AiResponse> {
+): Promise<ProcessJobResult> {
 
     // ─── 1. AUTENTICACIÓN ────────────────────────────────────────────────────
     const session = await auth();
-    if (!session?.user?.id) {
-        throw new Error("UNAUTHENTICATED");
+    const userId = session?.user?.id;
+    if (!userId) {
+        return { ok: false, code: "UNAUTHENTICATED" };
     }
 
-    // ─── 2. VERIFICAR Y CONSUMIR QUOTA ──────────────────────────────────────
-    const quotaResult = await checkAndConsumeQuota(session.user.id);
+    // ─── 2. VALIDAR ENTRADA (antes de gastar quota o tokens de IA) ──────────
+    if (
+        typeof jobTitle !== "string" ||
+        typeof jobDescription !== "string" ||
+        !jobDescription.trim() ||
+        jobTitle.length > LIMITS.title ||
+        jobDescription.length > LIMITS.jobDescription
+    ) {
+        return { ok: false, code: "INVALID_INPUT" };
+    }
+
+    const excludeProviders = Array.isArray(opts?.excludeProviders)
+        ? opts.excludeProviders.filter(isProviderId)
+        : [];
+
+    // ─── 3. VERIFICAR Y CONSUMIR QUOTA ──────────────────────────────────────
+    const quotaResult = await checkAndConsumeQuota(userId);
 
     if (!quotaResult.allowed) {
         if (quotaResult.reason === "QUOTA_EXCEEDED") {
-            // Lanzamos un error serializable con los datos necesarios para la UI
-            throw new Error(
-                `QUOTA_EXCEEDED:${quotaResult.usedToday}:${quotaResult.limit}:${quotaResult.resetsAt.toISOString()}`
-            );
+            return {
+                ok: false,
+                code: "QUOTA_EXCEEDED",
+                usedToday: quotaResult.usedToday,
+                limit: quotaResult.limit,
+                resetsAt: quotaResult.resetsAt,
+            };
         }
-        throw new Error("UNAUTHENTICATED");
+        return { ok: false, code: "UNAUTHENTICATED" };
     }
 
-    // ─── 3. LLAMADA A LA IA ─────────────────────────────────────────────────
+    // ─── 4. LLAMADA A LA IA ─────────────────────────────────────────────────
     const combined = `${jobTitle}\n\n${jobDescription}`;
     const prompt = opts?.autoSelect
         ? buildPromptAuto(combined)
         : buildPromptManual(combined);
 
     try {
-        const { text: raw, providerId } = await postToMcp(prompt, {
-            url: opts?.mcpUrl,
-            model: opts?.model,
-            timeoutMs: opts?.timeoutMs,
-            excludeProviders: opts?.excludeProviders
-        });
+        const { text: raw, providerId } = await postToMcp(prompt, { excludeProviders });
 
         const parsed = tryParseJsonFromText(raw);
         if (!validateAiResponse(parsed)) throw new Error("schema mismatch");
-        
-        parsed.provider = providerId;
 
-        // ─── 4. PERSISTIR STATS (fire-and-forget) ───────────────────────────
+        const data = limitAiResponse(parsed);
+        data.provider = providerId;
+
+        // ─── 5. PERSISTIR STATS ─────────────────────────────────────────────
+        // Se espera a que termine: el feedback posterior solo cuenta contra generaciones registradas.
         try {
-            const prisma = (await import("@/lib/prisma")).default;
             const profile = await prisma.profile.findUnique({
-                where: { userId: session.user.id },
+                where: { userId },
                 select: { id: true }
             });
             if (profile) {
-                providerManager.persistUserStats(profile.id, providerId, 'generated').catch(console.error);
+                await providerManager.persistGeneration(profile.id, providerId);
             }
         } catch (e) {
             console.error("Error logging stats:", e);
         }
 
-        return parsed;
+        return { ok: true, data };
 
     } catch (err) {
-        // Si el error ya es nuestro (QUOTA_EXCEEDED, UNAUTHENTICATED), lo re-lanzamos sin envolver
-        if (err instanceof Error && (
-            err.message.startsWith("QUOTA_EXCEEDED") ||
-            err.message === "UNAUTHENTICATED"
-        )) {
-            throw err;
-        }
-
         console.error("AI controller: Error connecting to AI service:", err);
-        throw new Error("AI_SERVICE_UNAVAILABLE");
+
+        // El usuario no recibió nada: se le devuelve el análisis descontado
+        if (quotaResult.consumed) {
+            await refundQuota(userId).catch((e) => console.error("Error refunding quota:", e));
+        }
+        return { ok: false, code: "AI_SERVICE_UNAVAILABLE" };
     }
 }

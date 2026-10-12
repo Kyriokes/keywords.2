@@ -4,21 +4,29 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 
 type OAuthErrorPageProps = {
-  searchParams?: { reason?: string };
+  searchParams: Promise<{ reason?: string }>;
+};
+
+const MESSAGES: Record<string, { title: string; description: string }> = {
+  oauth_email_missing: {
+    title: "LinkedIn no devolvió un email válido",
+    description:
+      "Para vincular cuentas necesitamos el email de LinkedIn. Probá ingresar con Google o revisá los permisos de tu cuenta de LinkedIn.",
+  },
+  oauth_email_unverified: {
+    title: "Tu email no está verificado",
+    description:
+      "Ya existe una cuenta con ese email y solo podemos vincularla si el proveedor confirma que el email es tuyo. Verificalo ahí o ingresá con Google.",
+  },
+  oauth_linking_failed: {
+    title: "No se pudo completar el acceso con LinkedIn",
+    description: "Hubo un problema al vincular tu cuenta. Intentá nuevamente o ingresá con Google.",
+  },
 };
 
 export default async function OAuthErrorPage({ searchParams }: OAuthErrorPageProps) {
-  const reason = searchParams?.reason ?? "oauth_linking_failed";
-
-  const title =
-    reason === "oauth_email_missing"
-      ? "LinkedIn no devolvió un email válido"
-      : "No se pudo completar el acceso con LinkedIn";
-
-  const description =
-    reason === "oauth_email_missing"
-      ? "Para vincular cuentas necesitamos el email de LinkedIn. Probá ingresar con Google o revisá los permisos de tu cuenta de LinkedIn."
-      : "Hubo un problema al vincular tu cuenta. Intentá nuevamente o ingresá con Google.";
+  const { reason } = await searchParams;
+  const { title, description } = MESSAGES[reason ?? ""] ?? MESSAGES.oauth_linking_failed;
 
   return (
     <div className="flex items-center justify-center min-h-[calc(100vh-200px)] p-4">

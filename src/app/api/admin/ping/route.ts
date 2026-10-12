@@ -1,8 +1,14 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createProvider } from "@/lib/ia/providers/factory";
+import { isAdminSession } from "@/lib/auth-guards";
 
 export async function GET(req: NextRequest) {
     try {
+        // Cada ping es una llamada real (y facturable) al proveedor: solo para administradores
+        if (!(await isAdminSession())) {
+            return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+        }
+
         const searchParams = req.nextUrl.searchParams;
         const providerId = searchParams.get("provider");
 

@@ -1,6 +1,7 @@
 
 import { NextResponse } from "next/server";
 import { providerManager } from "@/lib/ia/providerManager";
+import { isProviderId } from "@/lib/ia/providers/ids";
 import { auth } from "@/auth";
 import prisma from "@/lib/prisma";
 
@@ -18,6 +19,14 @@ export async function POST(req: Request) {
             return NextResponse.json({ error: "Missing fields" }, { status: 400 });
         }
 
+        if (!isProviderId(providerId)) {
+            return NextResponse.json({ error: "Invalid provider" }, { status: 400 });
+        }
+
+        if (action !== "accept" && action !== "reject") {
+            return NextResponse.json({ error: "Invalid action" }, { status: 400 });
+        }
+
         const profile = await prisma.profile.findUnique({
             where: { userId: session.user.id },
             select: { id: true }
@@ -27,17 +36,14 @@ export async function POST(req: Request) {
             return NextResponse.json({ error: "Profile not found" }, { status: 404 });
         }
 
-        if (action === "accept") {
-            providerManager.reportSuccess(providerId);
-            await providerManager.persistUserStats(profile.id, providerId, 'accepted');
-        } else if (action === "reject") {
-            providerManager.reportRejection(providerId);
-            await providerManager.persistUserStats(profile.id, providerId, 'rejected');
-        } else {
-            return NextResponse.json({ error: "Invalid action" }, { status: 400 });
-        }
+        // No cuenta si el perfil no tiene una generación de ese proveedor pendiente de calificar
+        const recorded = await providerManager.recordFeedback(
+            profile.id,
+            providerId,
+            action === "accept" ? 'accepted' : 'rejected'
+        );
 
-        return NextResponse.json({ success: true, stats: providerManager.getAllStats() });
+        return NextResponse.json({ success: recorded });
     } catch (error) {
         console.error("Feedback API Error:", error);
         return NextResponse.json({ error: "Internal Server Error" }, { status: 500 });

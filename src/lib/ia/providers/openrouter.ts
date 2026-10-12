@@ -13,7 +13,7 @@ export class OpenRouterProvider implements AiProvider {
             baseURL: 'https://openrouter.ai/api/v1',
             apiKey: apiKey,
             defaultHeaders: {
-                "HTTP-Referer": "http://localhost:3000",
+                "HTTP-Referer": process.env.AUTH_URL || "http://localhost:3000",
                 "X-Title": "KeyWords V2",
             }
         });

@@ -10,8 +10,12 @@ export interface AiResponse {
 }
 
 export interface McpOptions {
-    url?: string;
-    model?: string;
-    timeoutMs?: number;
     excludeProviders?: string[];
 }
+
+// Los errores esperados viajan como valor de retorno: en producción Next oculta
+// el mensaje de los errores lanzados por una server action.
+export type ProcessJobResult =
+    | { ok: true; data: AiResponse }
+    | { ok: false; code: "QUOTA_EXCEEDED"; usedToday: number; limit: number; resetsAt: Date }
+    | { ok: false; code: "UNAUTHENTICATED" | "INVALID_INPUT" | "AI_SERVICE_UNAVAILABLE" };

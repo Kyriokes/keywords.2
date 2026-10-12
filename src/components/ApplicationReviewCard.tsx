@@ -20,15 +20,21 @@ export function ApplicationReviewCard() {
     const { data, providerUsed, excludedProviders } = pendingApplication;
 
     const handleAccept = async () => {
-        // Mapear los datos al formato esperado por el server action
-        await addApplication({ 
-            ...data, 
-            positionId: data.positionId || data.jobTitle, // Use jobTitle as positionId/Title if not set
-            provider: providerUsed 
-        });
-        
+        try {
+            // Mapear los datos al formato esperado por el server action
+            await addApplication({
+                ...data,
+                positionId: data.positionId || data.jobTitle, // Use jobTitle as positionId/Title if not set
+                provider: providerUsed
+            });
+        } catch (e) {
+            // El resultado queda abierto para que el usuario pueda cancelar o reintentar
+            toast.error(e instanceof Error ? e.message : "No se pudo guardar la postulación.");
+            return;
+        }
+
         logAcceptance(providerUsed);
-        
+
         // Note: Server action 'createApplication' now handles persisting the 'accepted' stat to DB.
         // We only update local store here for immediate UI feedback if needed.
 
@@ -66,15 +72,24 @@ export function ApplicationReviewCard() {
                 }
             );
 
+            if (!result.ok) {
+                toast.error(
+                    result.code === "QUOTA_EXCEEDED"
+                        ? `Límite diario alcanzado (${result.usedToday}/${result.limit}). No se puede reintentar hoy.`
+                        : "Error al reintentar. Quizás no hay más IAs disponibles."
+                );
+                return;
+            }
+
             // Re-map result
             // Note: We keep the original 'data' (link, raw text) but update the AI parts
-            const newProvider = result.provider || "unknown";
+            const newProvider = result.data.provider || "unknown";
             logGeneration(newProvider);
 
             setPendingApplication({
                 data: {
                    ...data,
-                   detectedWords: result.palabrasClave.map(k => k.nombre),
+                   detectedWords: result.data.palabrasClave.map(k => k.nombre),
                    // If position was auto-selected, update it? 
                    // Ideally we should preserve the logic from the page, but here we are disconnected.
                    // We will assume the position stays same unless user changes it manually later, 

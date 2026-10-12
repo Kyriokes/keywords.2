@@ -9,82 +9,57 @@ import { CerebrasProvider } from "./cerebras";
 import { MistralProvider } from "./mistral";
 import { CohereProvider } from "./cohere";
 import { providerManager } from "../providerManager";
+import type { ProviderId } from "./ids";
+
+type PremiumProviderId = Exclude<ProviderId, "ollama">;
+
+// Proveedores que requieren API key. Para agregar uno nuevo alcanza con sumarlo acá y en ids.ts.
+const premiumProviders: Record<PremiumProviderId, { envKey: string; create: (apiKey: string) => AiProvider }> = {
+    groq: { envKey: "GROQ_API_KEY", create: (key) => new GroqProvider(key) },
+    gemini: { envKey: "GEMINI_API_KEY", create: (key) => new GeminiProvider(key) },
+    deepseek: { envKey: "DEEPSEEK_API_KEY", create: (key) => new DeepSeekProvider(key) },
+    openrouter: { envKey: "OPENROUTERAI_API_KEY", create: (key) => new OpenRouterProvider(key) },
+    huggingface: { envKey: "HUGGINGFACE_API_KEY", create: (key) => new HuggingFaceProvider(key) },
+    cerebras: { envKey: "CEREBRAS_API_KEY", create: (key) => new CerebrasProvider(key) },
+    mistral: { envKey: "MISTRAL_API_KEY", create: (key) => new MistralProvider(key) },
+    cohere: { envKey: "COHERE_API_KEY", create: (key) => new CohereProvider(key) },
+};
+
+const premiumIds = Object.keys(premiumProviders) as PremiumProviderId[];
+
+function isPremiumId(id: string): id is PremiumProviderId {
+    return Object.prototype.hasOwnProperty.call(premiumProviders, id);
+}
 
 export function createProvider(id: string): AiProvider | null {
-    const groqKey = process.env.GROQ_API_KEY;
-    const geminiKey = process.env.GEMINI_API_KEY;
-    const deepseekKey = process.env.DEEPSEEK_API_KEY;
-    const openrouterKey = process.env.OPENROUTERAI_API_KEY;
-    const huggingfaceKey = process.env.HUGGINGFACE_API_KEY;
-    const cerebrasKey = process.env.CEREBRAS_API_KEY;
-    const mistralKey = process.env.MISTRAL_API_KEY;
-    const cohereKey = process.env.COHERE_API_KEY;
+    if (id === "ollama") return new OllamaProvider();
+    if (!isPremiumId(id)) return null;
 
-    switch (id) {
-        case "groq": return groqKey ? new GroqProvider(groqKey) : null;
-        case "gemini": return geminiKey ? new GeminiProvider(geminiKey) : null;
-        case "deepseek": return deepseekKey ? new DeepSeekProvider(deepseekKey) : null;
-        case "openrouter": return openrouterKey ? new OpenRouterProvider(openrouterKey) : null;
-        case "huggingface": return huggingfaceKey ? new HuggingFaceProvider(huggingfaceKey) : null;
-        case "cerebras": return cerebrasKey ? new CerebrasProvider(cerebrasKey) : null;
-        case "mistral": return mistralKey ? new MistralProvider(mistralKey) : null;
-        case "cohere": return cohereKey ? new CohereProvider(cohereKey) : null;
-        case "ollama": return new OllamaProvider();
-        default: return null;
-    }
+    const { envKey, create } = premiumProviders[id];
+    const apiKey = process.env[envKey];
+    return apiKey ? create(apiKey) : null;
 }
 
 export function getAiProvider(excludeIds: string[] = []): AiProvider {
-    const groqKey = process.env.GROQ_API_KEY;
-    const geminiKey = process.env.GEMINI_API_KEY;
-    const deepseekKey = process.env.DEEPSEEK_API_KEY;
-    const openrouterKey = process.env.OPENROUTERAI_API_KEY;
-    const huggingfaceKey = process.env.HUGGINGFACE_API_KEY;
-    const cerebrasKey = process.env.CEREBRAS_API_KEY;
-    const mistralKey = process.env.MISTRAL_API_KEY;
-    const cohereKey = process.env.COHERE_API_KEY;
     const preferredProvider = process.env.AI_PROVIDER;
-
-    // Definitions
-    const factories: Record<string, () => AiProvider | null> = {
-        "groq": () => groqKey ? new GroqProvider(groqKey) : null,
-        "gemini": () => geminiKey ? new GeminiProvider(geminiKey) : null,
-        "deepseek": () => deepseekKey ? new DeepSeekProvider(deepseekKey) : null,
-        "openrouter": () => openrouterKey ? new OpenRouterProvider(openrouterKey) : null,
-        "huggingface": () => huggingfaceKey ? new HuggingFaceProvider(huggingfaceKey) : null,
-        "cerebras": () => cerebrasKey ? new CerebrasProvider(cerebrasKey) : null,
-        "mistral": () => mistralKey ? new MistralProvider(mistralKey) : null,
-        "cohere": () => cohereKey ? new CohereProvider(cohereKey) : null,
-        "ollama": () => new OllamaProvider()
-    };
 
     // 1. Force Preferred (Debug/Manual override)
     if (preferredProvider && !excludeIds.includes(preferredProvider)) {
-        const factory = factories[preferredProvider];
-        if (factory) {
+        const instance = createProvider(preferredProvider);
+        if (instance) {
             console.log(`[Factory] Forcing provider ${preferredProvider} via AI_PROVIDER env var`);
-            const instance = factory();
-            if (instance) return instance;
+            return instance;
         }
     }
 
     // 2. Identify Premium Candidates (Valid keys)
-    const premiumCandidates: string[] = [];
-    if (groqKey) premiumCandidates.push("groq");
-    if (geminiKey) premiumCandidates.push("gemini");
-    if (deepseekKey) premiumCandidates.push("deepseek");
-    if (openrouterKey) premiumCandidates.push("openrouter");
-    if (huggingfaceKey) premiumCandidates.push("huggingface");
-    if (cerebrasKey) premiumCandidates.push("cerebras");
-    if (mistralKey) premiumCandidates.push("mistral");
-    if (cohereKey) premiumCandidates.push("cohere");
-    // Add future providers here
+    const premiumCandidates = premiumIds.filter((id) => !!process.env[premiumProviders[id].envKey]);
 
     // 3. Select via Manager (Weighted Random, excluding Paused/Excluded)
     const selectedId = providerManager.selectProvider(premiumCandidates, excludeIds);
 
     if (selectedId) {
-        const instance = factories[selectedId]();
+        const instance = createProvider(selectedId);
         if (instance) return instance;
     }
 

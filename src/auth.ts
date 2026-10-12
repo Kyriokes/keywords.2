@@ -49,6 +49,13 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
         return true
       }
 
+      // Solo se vincula por email si el proveedor confirma que ese email está verificado.
+      // Sin esto, quien registre el email de otra persona en un proveedor tomaría su cuenta.
+      const emailVerified = (profile as { email_verified?: unknown } | undefined)?.email_verified
+      if (emailVerified !== true && emailVerified !== "true") {
+        return "/login/oauth-error?reason=oauth_email_unverified"
+      }
+
       try {
         await prisma.account.create({
           data: {

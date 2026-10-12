@@ -57,7 +57,7 @@ export function DesiredPositions() {
             await setPositions(localPositions)
             toast.success('Puestos guardados correctamente')
         } catch (error) {
-            toast.error('Error al guardar puestos')
+            toast.error(error instanceof Error ? error.message : 'Error al guardar puestos')
         }
     }
 

@@ -57,9 +57,14 @@ export function ApplicationsTable() {
     return Array.from(new Set([...titles, ...keywords])).sort();
   }, [applications]);
 
-  const handleDelete = (id: string) => {
-      removeApplication(id);
-      toast.success("Postulación eliminada");
+  const handleDelete = async (id: string) => {
+      if (!window.confirm('¿Eliminar esta postulación? Esto es irreversible')) return;
+      try {
+          await removeApplication(id);
+          toast.success("Postulación eliminada");
+      } catch {
+          toast.error("No se pudo eliminar la postulación");
+      }
   }
 
   const handleStatusChange = async (id: string, status: ApplicationStatus) => {

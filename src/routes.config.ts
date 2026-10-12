@@ -3,10 +3,12 @@ export type UserRole = "ADMIN" | "HUNTER" | "RECRUITER" | "BUSINESS";
 
 /**
  * Define las rutas públicas que no requieren autenticación.
+ * Se comparan por igualdad exacta; `/api/auth` además incluye todas sus subrutas.
  */
 export const publicRoutes = [
   "/",
   "/login",
+  "/login/oauth-error",
   "/api/auth", // Rutas internas de NextAuth
 ];
 
@@ -18,6 +20,8 @@ export const publicRoutes = [
  */
 export const protectedRoutes: Record<string, UserRole[]> = {
   "/admin": ["ADMIN"],
+  "/api/admin": ["ADMIN"],
+  "/api/debug": ["ADMIN"],
   "/user": ["HUNTER", "ADMIN"],
   "/recruiter": ["RECRUITER", "ADMIN"],
   "/business": ["BUSINESS", "ADMIN"],
@@ -27,7 +31,7 @@ export const protectedRoutes: Record<string, UserRole[]> = {
  * Ruta por defecto a la que se redirige después de hacer login
  * si no se especifica otra.
  */
-export const DEFAULT_LOGIN_REDIRECT = "/user";
+export const DEFAULT_LOGIN_REDIRECT = "/user/dashboard";
 
 /**
  * Ruta para usuarios que intentan acceder a una vista sin los permisos necesarios.

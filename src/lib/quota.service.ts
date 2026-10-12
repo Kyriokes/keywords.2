@@ -1,10 +1,10 @@
-"use server";
+import "server-only";
 
 import prisma from "@/lib/prisma";
 import { UserRole } from "@prisma/client";
 
 export type QuotaCheckResult =
-    | { allowed: true }
+    | { allowed: true; consumed: boolean }
     | {
           allowed: false;
           reason: "QUOTA_EXCEEDED";
@@ -27,11 +27,8 @@ export async function checkAndConsumeQuota(
     const user = await prisma.user.findUnique({
         where: { id: userId },
         select: {
-            id: true,
             role: true,
-            dailyAnalysesUsed: true,
             dailyAnalysesLimit: true,
-            dailyAnalysesDate: true,
         },
     });
 
@@ -41,41 +38,63 @@ export async function checkAndConsumeQuota(
 
     // ADMIN no tiene límite
     if (user.role === UserRole.ADMIN) {
-        return { allowed: true };
+        return { allowed: true, consumed: false };
     }
 
-    // Calcular si hay que resetear el contador (nuevo día en Argentina, UTC-3)
     const now = new Date();
-    const todayAR = getArgentineDateString(now);
-    const lastUseDateAR = user.dailyAnalysesDate
-        ? getArgentineDateString(user.dailyAnalysesDate)
-        : null;
+    const startOfToday = getStartOfDayAR(now);
+    const limit = user.dailyAnalysesLimit;
 
-    const isNewDay = lastUseDateAR !== todayAR;
-    const currentUsed = isNewDay ? 0 : user.dailyAnalysesUsed;
+    // Cada intento es un único UPDATE condicional: la base decide si hay cupo,
+    // así dos requests simultáneos no pueden pasar con el mismo valor del contador.
+    if (limit > 0) {
+        // Primer análisis del día (o de la historia): reinicia el contador en 1
+        const firstOfDay = await prisma.user.updateMany({
+            where: {
+                id: userId,
+                OR: [
+                    { dailyAnalysesDate: null },
+                    { dailyAnalysesDate: { lt: startOfToday } },
+                ],
+            },
+            data: { dailyAnalysesUsed: 1, dailyAnalysesDate: now },
+        });
+        if (firstOfDay.count === 1) {
+            return { allowed: true, consumed: true };
+        }
 
-    // Verificar si tiene cupo
-    if (currentUsed >= user.dailyAnalysesLimit) {
-        const resetsAt = getNextMidnightAR(now);
-        return {
-            allowed: false,
-            reason: "QUOTA_EXCEEDED",
-            usedToday: currentUsed,
-            limit: user.dailyAnalysesLimit,
-            resetsAt,
-        };
+        // Mismo día: incrementa solo si todavía queda cupo
+        const sameDay = await prisma.user.updateMany({
+            where: {
+                id: userId,
+                dailyAnalysesDate: { gte: startOfToday },
+                dailyAnalysesUsed: { lt: limit },
+            },
+            data: { dailyAnalysesUsed: { increment: 1 }, dailyAnalysesDate: now },
+        });
+        if (sameDay.count === 1) {
+            return { allowed: true, consumed: true };
+        }
     }
 
-    // Consumir el cupo atómicamente
-    await prisma.user.update({
-        where: { id: userId },
-        data: {
-            dailyAnalysesUsed: currentUsed + 1,
-            dailyAnalysesDate: now,
-        },
-    });
+    const status = await getQuotaStatus(userId);
+    return {
+        allowed: false,
+        reason: "QUOTA_EXCEEDED",
+        usedToday: status?.used ?? limit,
+        limit,
+        resetsAt: getNextMidnightAR(now),
+    };
+}
 
-    return { allowed: true };
+/**
+ * Devuelve un análisis consumido (por ejemplo, si la IA falló y el usuario no recibió nada).
+ */
+export async function refundQuota(userId: string): Promise<void> {
+    await prisma.user.updateMany({
+        where: { id: userId, dailyAnalysesUsed: { gt: 0 } },
+        data: { dailyAnalysesUsed: { decrement: 1 } },
+    });
 }
 
 /**
@@ -100,12 +119,8 @@ export async function getQuotaStatus(userId: string): Promise<{
     if (!user) return null;
 
     const now = new Date();
-    const todayAR = getArgentineDateString(now);
-    const lastUseDateAR = user.dailyAnalysesDate
-        ? getArgentineDateString(user.dailyAnalysesDate)
-        : null;
-
-    const isNewDay = lastUseDateAR !== todayAR;
+    const isNewDay =
+        !user.dailyAnalysesDate || user.dailyAnalysesDate < getStartOfDayAR(now);
     const used = isNewDay ? 0 : user.dailyAnalysesUsed;
 
     return {
@@ -118,21 +133,13 @@ export async function getQuotaStatus(userId: string): Promise<{
 
 // ─── Helpers de Timezone ────────────────────────────────────────────────────
 
-/**
- * Devuelve la fecha en Argentina como string "YYYY-MM-DD".
- * Argentina es UTC-3 (sin DST).
- */
-function getArgentineDateString(date: Date): string {
-    return date.toLocaleDateString("en-CA", {
-        timeZone: "America/Argentina/Buenos_Aires",
-    });
-    // 'en-CA' devuelve formato YYYY-MM-DD, ideal para comparar
-}
+const DAY_MS = 24 * 60 * 60 * 1000;
 
 /**
- * Devuelve la próxima medianoche en Argentina como Date UTC.
+ * Devuelve la medianoche con la que empezó el día actual en Argentina, como Date UTC.
+ * Argentina es UTC-3 (sin DST).
  */
-function getNextMidnightAR(now: Date): Date {
+function getStartOfDayAR(now: Date): Date {
     const formatter = new Intl.DateTimeFormat("en-CA", {
         timeZone: "America/Argentina/Buenos_Aires",
         year: "numeric",
@@ -144,14 +151,13 @@ function getNextMidnightAR(now: Date): Date {
     const month = Number(parts.find((p) => p.type === "month")?.value) - 1;
     const day = Number(parts.find((p) => p.type === "day")?.value);
 
-    // Medianoche del día siguiente en AR = 03:00 UTC del día siguiente (AR = UTC-3)
-    const nextDayAR = new Date(Date.UTC(year, month, day + 1, 3, 0, 0));
-    return nextDayAR;
+    // Medianoche en AR = 03:00 UTC del mismo día calendario (AR = UTC-3)
+    return new Date(Date.UTC(year, month, day, 3, 0, 0));
 }
 
-export async function getMyQuotaStatus() {
-    const { auth } = await import("@/auth");
-    const session = await auth();
-    if (!session?.user?.id) return null;
-    return getQuotaStatus(session.user.id);
+/**
+ * Devuelve la próxima medianoche en Argentina como Date UTC.
+ */
+function getNextMidnightAR(now: Date): Date {
+    return new Date(getStartOfDayAR(now).getTime() + DAY_MS);
 }

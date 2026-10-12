@@ -161,14 +161,9 @@ class ProviderManager {
         return obj;
     }
     
-    // Método para persistir estadísticas de un usuario específico
-    public async persistUserStats(profileId: string, providerId: string, type: 'generated' | 'accepted' | 'rejected') {
+    // Persiste que un proveedor generó un resultado para este perfil
+    public async persistGeneration(profileId: string, providerId: string) {
         try {
-            const updateData: any = {};
-            if (type === 'generated') updateData.generated = { increment: 1 };
-            if (type === 'accepted') updateData.accepted = { increment: 1 };
-            if (type === 'rejected') updateData.rejected = { increment: 1 };
-
             await prisma.providerStats.upsert({
                 where: {
                     profileId_provider: {
@@ -179,14 +174,48 @@ class ProviderManager {
                 create: {
                     profileId,
                     provider: providerId,
-                    generated: type === 'generated' ? 1 : 0,
-                    accepted: type === 'accepted' ? 1 : 0,
-                    rejected: type === 'rejected' ? 1 : 0
+                    generated: 1
                 },
-                update: updateData
+                update: { generated: { increment: 1 } }
             });
         } catch (error) {
             console.error(`[ProviderManager] Error persisting stats for ${providerId}:`, error);
+        }
+    }
+
+    /**
+     * Registra una aceptación o rechazo del usuario y ajusta el score del proveedor.
+     * Solo cuenta si ese perfil tiene generaciones de ese proveedor todavía sin calificar,
+     * así el ranking global no se puede inflar ni hundir con feedback inventado.
+     */
+    public async recordFeedback(profileId: string, providerId: string, type: 'accepted' | 'rejected'): Promise<boolean> {
+        try {
+            const stats = await prisma.providerStats.findUnique({
+                where: {
+                    profileId_provider: {
+                        profileId,
+                        provider: providerId
+                    }
+                }
+            });
+            if (!stats || stats.accepted + stats.rejected >= stats.generated) return false;
+
+            // El where repite los contadores leídos: si otro request los cambió en el medio, no cuenta.
+            const { count } = await prisma.providerStats.updateMany({
+                where: { id: stats.id, accepted: stats.accepted, rejected: stats.rejected },
+                data: type === 'accepted' ? { accepted: { increment: 1 } } : { rejected: { increment: 1 } }
+            });
+            if (count !== 1) return false;
+
+            if (type === 'accepted') {
+                this.reportSuccess(providerId);
+            } else {
+                this.reportRejection(providerId);
+            }
+            return true;
+        } catch (error) {
+            console.error(`[ProviderManager] Error recording feedback for ${providerId}:`, error);
+            return false;
         }
     }
 }

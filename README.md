@@ -14,7 +14,7 @@
 
 ### 1. Análisis Inteligente de CVs y Postulaciones
 - **Soporte Multiformato:** Extracción de texto sin fricciones desde documentos PDF y Word.
-- **Extracción Semántica de Palabras Clave:** Impulsado por LLMs (OpenAI, Gemini, Groq, DeepSeek) para identificar habilidades técnicas (hard skills), habilidades blandas (soft skills) y tecnologías.
+- **Extracción Semántica de Palabras Clave:** Impulsado por LLMs (Groq, Gemini, DeepSeek, OpenRouter, HuggingFace, Cerebras, Mistral, Cohere y Ollama local) para identificar habilidades técnicas (hard skills), habilidades blandas (soft skills) y tecnologías.
 - **Diccionario Canónico:** Un diccionario de inteligencia centralizado que entiende que "React.js", "ReactJS" y "React" son la misma habilidad, permitiendo un análisis de brechas (gap analysis) preciso.
 
 ### 2. Seguimiento de Postulaciones (ATS para Candidatos)
@@ -45,51 +45,47 @@ El sistema está construido sobre un modelo de datos relacional robusto y altame
 
 ## 🛠️ Stack Tecnológico (Visión Estratégica)
 
-- **Frontend:** Next.js 15+ (App Router), React 19, Tailwind CSS v4, Framer Motion (para fluidez en la experiencia de usuario).
+- **Frontend:** Next.js 16 (App Router), React 19, Tailwind CSS v4, Framer Motion (para fluidez en la experiencia de usuario).
 - **Gestión de Estado:** Zustand (para un estado global ligero y predecible).
 - **Backend/API:** Server Actions & Route Handlers de Next.js para comunicación fluida cliente-servidor.
 - **Base de Datos:** PostgreSQL gestionado a través de Prisma ORM.
-- **Autenticación:** Auth.js (NextAuth v5 beta) para inicio de sesión seguro, multi-proveedor OAuth y por credenciales.
-- **Integración de IA:** Patrón de Controlador de IA Unificado que soporta OpenAI, Google Generative AI, Groq, DeepSeek y Ollama (IA Local).
+- **Autenticación:** Auth.js (NextAuth v5 beta) para inicio de sesión seguro con OAuth (Google; LinkedIn configurado pero oculto en la UI).
+- **Integración de IA:** Patrón de Controlador de IA Unificado con selección ponderada entre Groq, Gemini, DeepSeek, OpenRouter, HuggingFace, Cerebras, Mistral y Cohere, y Ollama (IA Local) como último recurso.
 - **Procesamiento de Archivos:** `pdf2json` y `mammoth` para el análisis robusto de documentos en el servidor.
 
 ## 🚀 Guía de Inicio (Para Desarrolladores)
 
 ### Prerrequisitos
-- Node.js (v18+)
+- Node.js (v20.9+) y pnpm
 - Base de datos PostgreSQL
-- Claves de API (API Keys) para los proveedores de IA deseados (OpenAI, Groq, Gemini, etc.)
+- Credenciales OAuth de Google (Client ID y Client Secret)
+- Claves de API (API Keys) para los proveedores de IA deseados (Groq, Gemini, etc.), u Ollama corriendo en local
 
 ### 1. Clonar e Instalar
 ```bash
 git clone <repository-url>
 cd KeyWords/V2
-npm install # o pnpm install / yarn install
+pnpm install
 ```
 
 ### 2. Configuración de Entorno
-Crea un archivo `.env` en el directorio raíz:
-```env
-DATABASE_URL="postgresql://usuario:password@localhost:5432/keywords"
-AUTH_SECRET="tu-clave-super-secreta"
-
-# Proveedores de IA (Añade los que planees utilizar)
-OPENAI_API_KEY="sk-..."
-GROQ_API_KEY="gsk_..."
-GEMINI_API_KEY="AIza..."
+Copia `.env.example` a `.env` en el directorio raíz y completa los valores:
+```bash
+cp .env.example .env
 ```
+Son obligatorias `DATABASE_URL`, `NEXTAUTH_SECRET`, `GOOGLE_CLIENT_ID` y `GOOGLE_CLIENT_SECRET`. De los proveedores de IA alcanza con configurar uno.
 
 ### 3. Configuración de Base de Datos
-Sincroniza el esquema con tu base de datos y genera el Prisma Client:
+Aplica las migraciones a tu base de datos y genera el Prisma Client:
 ```bash
-npx prisma generate
-npx prisma db push
+pnpm exec prisma migrate deploy
+pnpm exec prisma generate
 ```
 
 ### 4. Ejecutar la Aplicación
 Inicia el servidor de desarrollo:
 ```bash
-npm run dev
+pnpm dev
 ```
 Navega a [http://localhost:3000](http://localhost:3000) para acceder a la plataforma.
 
