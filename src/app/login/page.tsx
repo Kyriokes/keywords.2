@@ -1,8 +1,11 @@
 
+import type { Metadata } from "next";
 import { signIn } from "@/auth";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Lock } from "lucide-react";
+
+export const metadata: Metadata = { title: "Iniciar sesión" };
 
 export default function LoginPage() {
   return (

@@ -1,7 +1,10 @@
+import type { Metadata } from "next";
 import { auth } from "@/auth";
 import { CvDropBox } from "@/components/CvDropBox";
 import { CvList } from "@/components/CvList";
 import { DesiredPositions } from "@/components/DesiredPositions";
+
+export const metadata: Metadata = { title: "Mi perfil" };
 
 export default async function ProfilePage() {
     const session = await auth();
