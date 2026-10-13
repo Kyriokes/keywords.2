@@ -6,7 +6,10 @@
     "dev": "next dev",
     "build": "prisma generate && next build",
     "start": "next start",
-    "lint": "eslint"
+    "lint": "eslint",
+    "test": "vitest run",
+    "dictionary:seed": "tsx --env-file=.env prisma/dictionary/seed.ts",
+    "dictionary:backfill": "tsx --env-file=.env prisma/dictionary/backfill.ts"
   },
   "dependencies": {
     "@auth/prisma-adapter": "^2.11.3",
@@ -23,6 +26,7 @@
     "clsx": "^2.1.1",
     "cohere-ai": "^7.21.0",
     "framer-motion": "^12.23.26",
+    "fuzzysort": "^4.0.2",
     "groq-sdk": "^0.37.0",
     "lucide-react": "^0.562.0",
     "mammoth": "^1.13.0",
@@ -49,8 +53,10 @@
     "eslint-config-next": "16.3.8",
     "prisma": "5.10.2",
     "tailwindcss": "^4",
+    "tsx": "^4.23.15",
     "tw-animate-css": "^1.4.0",
-    "typescript": "^5"
+    "typescript": "^5",
+    "vitest": "^5.0.4"
   },
   "pnpm": {
     "overrides": {
