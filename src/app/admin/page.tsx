@@ -13,6 +13,7 @@ import { toast } from "sonner";
 import type { ProviderState } from "@/lib/ia/providerManager";
 import { PROVIDER_IDS } from "@/lib/ia/providers/ids";
 import { PingResponse, SystemBackup } from "@/types/admin";
+import { DictionaryQueue } from "@/components/admin/DictionaryQueue";
 
 export default function DebugPage() {
   const { cvs, fetchCVs } = useCvStore();
@@ -153,6 +154,8 @@ export default function DebugPage() {
             </Button>
         </div>
       </div>
+
+      <DictionaryQueue />
 
       {/* Seccion Estadisticas de Proveedores */}
       <section className="space-y-4">

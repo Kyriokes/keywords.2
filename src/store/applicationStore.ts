@@ -17,6 +17,8 @@ export interface JobApplication {
 
 export interface PendingApplication {
   data: Omit<JobApplication, 'id' | 'date' | 'status'>;
+  /** Palabras de `data.detectedWords` que todavía no están en el diccionario. */
+  unverifiedWords?: string[];
   providerUsed: string;
   excludedProviders: string[];
 }

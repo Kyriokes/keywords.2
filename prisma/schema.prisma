@@ -194,8 +194,11 @@ model Position {
 model Keyword {
   id            String  @id @default(cuid())
   canonicalText String  @unique // Texto oficial/canónico (ej: "react")
-  category      String? // Opcional: Clasificación (Tecnología, Soft Skill, Idioma)
-  isApproved    Boolean @default(false)
+  displayName   String? // Cómo se muestra (ej: "Node.js"); si falta se usa canonicalText
+  category      String? // Clasificación; valores en src/lib/keywords/categories.ts
+  isApproved    Boolean @default(false) // true = entrada verificada del diccionario
+  isBlocked     Boolean @default(false) // Ruido: no se muestra ni cuenta en métricas
+  source        String? // Origen: "seed", "onet", "admin", "user"
 
   // Relación 1:N con Alias (Familias Semánticas)
   aliases KeywordAlias[]
@@ -209,8 +212,9 @@ model Keyword {
 
 // Nuevo modelo para soportar variaciones (ej: "React.js", "ReactJS" -> "react")
 model KeywordAlias {
-  id        String @id @default(cuid())
-  aliasText String @unique // Variación (ej: "reactjs", "react.js", "react")
+  id        String  @id @default(cuid())
+  aliasText String  @unique // Clave de comparación del alias (ver aliasKey): "reactjs", "nodejs"
+  exactText String? // Si está, en texto libre solo coincide con esta escritura exacta (ej: "Go")
 
   keywordId String
   keyword   Keyword @relation(fields: [keywordId], references: [id], onDelete: Cascade)

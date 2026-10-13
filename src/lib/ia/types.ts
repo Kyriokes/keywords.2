@@ -1,6 +1,8 @@
 export interface AiKeyword {
     nombre: string;
     cantidad: number;
+    /** false si el término todavía no está en el diccionario. Ausente si no se pudo consultar. */
+    verificada?: boolean;
 }
 
 export interface AiResponse {

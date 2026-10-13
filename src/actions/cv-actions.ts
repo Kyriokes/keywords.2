@@ -4,6 +4,19 @@ import { auth } from "@/auth"
 import prisma from "@/lib/prisma"
 import { revalidatePath } from "next/cache"
 import { LIMITS, uploadCvSchema, firstIssueMessage, type ActionResult } from "@/lib/validation"
+import { detectKeywords, keywordName, lookupTerms } from "@/lib/keywords/dictionary"
+
+// Las keywords de un CV salen siempre del diccionario. Si el CV llega sin texto (por ejemplo,
+// importado desde un Excel viejo) se usan las palabras recibidas que el diccionario reconozca.
+async function cvKeywordIds(text: string, fallbackKeywords: string[]): Promise<string[]> {
+  if (text.trim()) {
+    return (await detectKeywords(text)).map((k) => k.id)
+  }
+  const known = await lookupTerms(fallbackKeywords)
+  return Array.from(new Set(
+    Array.from(known.values()).filter((k) => k.verified && !k.blocked).map((k) => k.id)
+  ))
+}
 
 export async function uploadCV(data: { name: string; text: string; keywords: string[] }): Promise<ActionResult> {
   const session = await auth()
@@ -34,6 +47,8 @@ export async function uploadCV(data: { name: string; text: string; keywords: str
     }
   }
 
+  const keywordIds = (await cvKeywordIds(input.text, input.keywords)).slice(0, LIMITS.cvKeywords)
+
   await prisma.cV.create({
     data: {
       name: input.name,
@@ -41,14 +56,7 @@ export async function uploadCV(data: { name: string; text: string; keywords: str
       isPrimary: count === 0,
       profileId: profile.id,
       keywords: {
-        create: input.keywords.map(k => ({
-          keyword: {
-            connectOrCreate: {
-              where: { canonicalText: k },
-              create: { canonicalText: k }
-            }
-          }
-        }))
+        create: keywordIds.map(keywordId => ({ keywordId }))
       }
     }
   })
@@ -85,7 +93,7 @@ export async function getCVs() {
     text: cv.text,
     uploadDate: cv.uploadDate.getTime(),
     isPrimary: cv.isPrimary,
-    keywords: cv.keywords.map((k) => k.keyword.canonicalText)
+    keywords: cv.keywords.filter((k) => !k.keyword.isBlocked).map((k) => keywordName(k.keyword))
   }))
 }
 

@@ -19,19 +19,28 @@ export type ActionResult<T = undefined> =
     | { ok: true; data: T }
     | { ok: false; code: string; message: string };
 
-/** Normaliza keywords: minúsculas, sin vacías ni duplicadas, descarta las demasiado largas y recorta la lista. */
-export function sanitizeKeywords(keywords: unknown, max: number): string[] {
-    if (!Array.isArray(keywords)) return [];
+/**
+ * Limpia una lista de términos conservando cómo están escritos: sin vacíos, sin repetidos
+ * (ignorando mayúsculas), descarta los demasiado largos y recorta la lista.
+ */
+export function sanitizeTerms(terms: unknown, max: number): string[] {
+    if (!Array.isArray(terms)) return [];
 
-    const unique = new Set<string>();
-    for (const keyword of keywords) {
+    const unique = new Map<string, string>();
+    for (const term of terms) {
         if (unique.size >= max) break;
-        if (typeof keyword !== "string") continue;
-        const normalized = keyword.trim().toLowerCase();
-        if (!normalized || normalized.length > LIMITS.keywordLength) continue;
-        unique.add(normalized);
+        if (typeof term !== "string") continue;
+        const trimmed = term.trim();
+        if (!trimmed || trimmed.length > LIMITS.keywordLength) continue;
+        const key = trimmed.toLowerCase();
+        if (!unique.has(key)) unique.set(key, trimmed);
     }
-    return Array.from(unique);
+    return Array.from(unique.values());
+}
+
+/** Como `sanitizeTerms`, pero devuelve todo en minúsculas. */
+export function sanitizeKeywords(keywords: unknown, max: number): string[] {
+    return sanitizeTerms(keywords, max).map((keyword) => keyword.toLowerCase());
 }
 
 /**
@@ -76,7 +85,8 @@ export const createApplicationSchema = z.object({
         .string()
         .max(LIMITS.jobDescription, `La descripción supera el máximo de ${LIMITS.jobDescription} caracteres.`),
     link: optionalLink,
-    detectedWords: z.unknown().transform((value) => sanitizeKeywords(value, LIMITS.applicationKeywords)),
+    // Se conserva la escritura original: es el nombre visible de los términos que el diccionario no conoce
+    detectedWords: z.unknown().transform((value) => sanitizeTerms(value, LIMITS.applicationKeywords)),
     positionTitle: title.optional(),
     provider: z.string().optional(),
 });

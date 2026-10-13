@@ -9,6 +9,7 @@ import { auth } from "@/auth";
 import prisma from "@/lib/prisma";
 import { providerManager } from "./providerManager";
 import { isProviderId } from "./providers/ids";
+import { standardizeOfferKeywords } from "@/lib/keywords/dictionary";
 import { checkAndConsumeQuota, refundQuota } from "@/lib/quota.service";
 import { LIMITS } from "@/lib/validation";
 
@@ -74,7 +75,19 @@ export async function processJobApplication(
         const data = limitAiResponse(parsed);
         data.provider = providerId;
 
-        // ─── 5. PERSISTIR STATS ─────────────────────────────────────────────
+        // ─── 5. ESTANDARIZAR CONTRA EL DICCIONARIO ──────────────────────────
+        // Si falla, el usuario igual recibe lo que devolvió la IA; al guardar se vuelve a intentar.
+        try {
+            data.palabrasClave = await standardizeOfferKeywords(
+                data.palabrasClave,
+                jobDescription,
+                LIMITS.applicationKeywords
+            );
+        } catch (e) {
+            console.error("Error standardizing keywords:", e);
+        }
+
+        // ─── 6. PERSISTIR STATS ─────────────────────────────────────────────
         // Se espera a que termine: el feedback posterior solo cuenta contra generaciones registradas.
         try {
             const profile = await prisma.profile.findUnique({

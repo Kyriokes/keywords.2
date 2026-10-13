@@ -89,11 +89,35 @@ pnpm dev
 ```
 Navega a [http://localhost:3000](http://localhost:3000) para acceder a la plataforma.
 
+### 5. Diccionario de keywords
+Las keywords de CVs y ofertas pasan por un mismo diccionario, que une las variantes de un término ("React.js", "ReactJS" y "React" son una sola habilidad) y les asigna una categoría. Lo que el diccionario no conoce se guarda como "sin verificar" y aparece en `/admin` para aprobarlo, fusionarlo con una entrada existente o bloquearlo.
+
+La semilla está en `prisma/dictionary/tech.json` (tecnologías, herramientas y metodologías de IT, con alias en español e inglés). Para cargarla:
+```bash
+pnpm dictionary:seed
+```
+Se puede correr todas las veces que haga falta: no pisa lo que ya editó un admin. Con `--dry-run` solo informa qué haría.
+
+Si la base tiene datos anteriores al diccionario, este script los estandariza (fusiona variantes, recalcula las keywords de cada CV desde su texto y borra las que quedan sin uso):
+```bash
+pnpm dictionary:backfill           # simulación: informa, no escribe
+pnpm dictionary:backfill --apply   # aplica los cambios
+```
+Ambos scripts muestran a qué base apuntan antes de hacer nada. Para probarlos en otra base (por ejemplo, una branch de Neon), definí `DATABASE_URL` en la terminal antes de correrlos.
+
+### 6. Tests
+```bash
+pnpm test
+```
+
 ## 🗺️ Roadmap y Visión Futura
 - **Fase 1:** Seguimiento core de candidatos, análisis de CVs y análisis de brechas (Actual).
 - **Fase 2:** Generación avanzada de Cartas de Presentación (Cover Letters) con IA adaptadas a descripciones de trabajo específicas.
 - **Fase 3:** Panel para reclutadores para análisis masivo de CVs y ranking automatizado de candidatos.
 - **Fase 4:** Extensión de navegador para importar descripciones de trabajo con un clic desde LinkedIn, Indeed y Glassdoor.
+
+## 📚 Atribuciones
+La semilla del diccionario incluye información de la base de datos O*NET 31.0 del U.S. Department of Labor, Employment and Training Administration (USDOL/ETA), usada bajo la licencia CC BY 4.0. O*NET® es una marca registrada de USDOL/ETA. Este proyecto modificó parte de esa información; USDOL/ETA no aprobó, avaló ni probó esas modificaciones.
 
 ---
 *Diseñado y construido con ❤️ por el equipo de KeyWords. Elevando carreras profesionales a través de los datos.*

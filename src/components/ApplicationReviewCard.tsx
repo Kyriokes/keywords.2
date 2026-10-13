@@ -18,6 +18,7 @@ export function ApplicationReviewCard() {
     if (!pendingApplication) return null;
 
     const { data, providerUsed, excludedProviders } = pendingApplication;
+    const unverifiedWords = new Set(pendingApplication.unverifiedWords);
 
     const handleAccept = async () => {
         try {
@@ -96,6 +97,7 @@ export function ApplicationReviewCard() {
                    // OR we update it if it was "otros".
                    // For simplicity, let's update detected words mainly.
                 },
+                unverifiedWords: result.data.palabrasClave.filter(k => k.verificada === false).map(k => k.nombre),
                 providerUsed: newProvider,
                 excludedProviders: newExcluded
             });
@@ -144,12 +146,28 @@ export function ApplicationReviewCard() {
                 {/* Keywords */}
                 <div>
                     <h3 className="text-sm font-medium text-muted-foreground mb-2">Palabras Clave Detectadas ({data.detectedWords.length})</h3>
+                    {unverifiedWords.size > 0 && (
+                        <p className="text-xs text-muted-foreground mb-2">
+                            Las de borde punteado todavía no están en el diccionario: se guardan igual, sin verificar.
+                        </p>
+                    )}
                     <div className="flex flex-wrap gap-2">
                         {data.detectedWords.length > 0 ? (
                             data.detectedWords.map((word, i) => (
-                                <Badge key={i} variant="secondary" className="px-3 py-1 text-sm">
-                                    {word}
-                                </Badge>
+                                unverifiedWords.has(word) ? (
+                                    <Badge
+                                        key={i}
+                                        variant="outline"
+                                        className="border-dashed px-3 py-1 text-sm font-normal text-muted-foreground"
+                                        title="Todavía no está en el diccionario"
+                                    >
+                                        {word}
+                                    </Badge>
+                                ) : (
+                                    <Badge key={i} variant="secondary" className="px-3 py-1 text-sm">
+                                        {word}
+                                    </Badge>
+                                )
                             ))
                         ) : (
                             <div className="flex items-center gap-2 text-yellow-600 bg-yellow-500/10 p-2 rounded text-sm">
