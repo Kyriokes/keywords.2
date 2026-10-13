@@ -148,7 +148,7 @@ export function ApplicationReviewCard() {
                 
                 {/* Position */}
                 <div>
-                    <h3 className="text-sm font-medium text-muted-foreground mb-1">Puesto Detectado / Seleccionado</h3>
+                    <h3 className="text-sm font-medium text-muted-foreground mb-1">Puesto detectado</h3>
                     <div className="text-lg font-semibold">{data.jobTitle}</div>
                     <p className="mt-1 text-sm text-muted-foreground">
                         {data.role ? (

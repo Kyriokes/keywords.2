@@ -100,7 +100,7 @@ export function LoadSaveDropzone({ onFileSelected }: LoadSaveDropzoneProps) {
       if (file.name.endsWith('.xlsx') || file.name.endsWith('.xls')) {
         processFile(file);
       } else {
-        toast.error("Formato de archivo no soportado. Usa .xlsx o .xls");
+        toast.error("Formato de archivo no soportado. Usá .xlsx o .xls");
       }
     }
   };
@@ -168,7 +168,7 @@ export function LoadSaveDropzone({ onFileSelected }: LoadSaveDropzoneProps) {
         
         <h3 className="text-xl font-semibold mb-2">Cargar Save File</h3>
         <p className="text-sm text-muted-foreground">
-          {isDragging ? "¡Suelta el archivo aquí!" : "Deposita tu archivo .xlsx aquí"}
+          {isDragging ? "Soltá el archivo acá" : "Arrastrá tu archivo .xlsx acá"}
         </p>
       </motion.div>
       

@@ -8,10 +8,10 @@ export default function UnauthorizedPage() {
       <ShieldAlert className="mb-6 size-12 text-muted-foreground" />
       <h1 className="mb-4 text-4xl font-semibold">Acceso denegado</h1>
       <p className="mb-8 max-w-md text-lg text-muted-foreground">
-        No tienes los permisos necesarios para ver esta página. Si crees que esto es un error, contacta al administrador.
+        No tenés los permisos necesarios para ver esta página. Si creés que es un error, avisale al administrador.
       </p>
       <Link href="/user/dashboard" className={primaryButton}>
-        Volver al Inicio
+        Volver al inicio
       </Link>
     </div>
   );

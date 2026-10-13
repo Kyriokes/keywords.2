@@ -73,7 +73,7 @@ export function DataPanel() {
       <CardHeader>
         <CardTitle>Tus datos</CardTitle>
         <CardDescription>
-          Estas acciones afectan solo a tu cuenta. Tus postulaciones y CVs se ven en Mis Postulaciones y Mi Perfil.
+          Estas acciones afectan solo a tu cuenta. Tus postulaciones y CVs se ven en Mis postulaciones y Mi perfil.
         </CardDescription>
       </CardHeader>
       <CardContent className="space-y-6">
@@ -97,13 +97,13 @@ export function DataPanel() {
           <p className="text-sm text-muted-foreground">Borrar no se puede deshacer.</p>
           <div className="flex flex-wrap gap-2">
             <Button variant="destructive" onClick={() => {
-              if (confirm("¿Seguro que quieres borrar TODAS las postulaciones?")) clearAllApplications();
+              if (confirm("¿Seguro que querés borrar todas las postulaciones? No se puede deshacer.")) clearAllApplications();
             }}>
               <Trash2 className="mr-2 h-4 w-4" />
-              Borrar Postulaciones
+              Borrar postulaciones
             </Button>
             <Button variant="outline" onClick={() => {
-              if (confirm("¿Seguro que quieres borrar TODOS los puestos?")) clearPositions();
+              if (confirm("¿Seguro que querés borrar todos los puestos? No se puede deshacer.")) clearPositions();
             }}>
               <Trash2 className="mr-2 h-4 w-4 text-destructive" />
               Borrar Puestos

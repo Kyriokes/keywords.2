@@ -77,11 +77,11 @@ export default function AddJobPage() {
 
     const handleProcess = async () => {
         if (!rawText.trim()) {
-            toast.error("Por favor, pega el texto de la oferta.");
+            toast.error("Pegá el texto de la oferta.");
             return;
         }
         if (!link.trim()) {
-            toast.error("Por favor, ingresa el link de la publicación.");
+            toast.error("Ingresá el link de la publicación.");
             return;
         }
 
@@ -108,9 +108,9 @@ export default function AddJobPage() {
                     // Sincroniza el indicador con lo que dice el servidor
                     setQuota(prev => prev && { ...prev, used: result.usedToday, limit: result.limit });
                 } else if (result.code === "AI_SERVICE_UNAVAILABLE") {
-                    toast.error("El servidor de IA no responde. Por favor, aguarda e inténtalo de nuevo más tarde.");
+                    toast.error("El servidor de IA no responde. Esperá un momento y volvé a intentar.");
                 } else if (result.code === "UNAUTHENTICATED") {
-                    toast.error("Tu sesión expiró. Por favor, volvé a iniciar sesión.");
+                    toast.error("Tu sesión expiró. Volvé a iniciar sesión.");
                 } else {
                     toast.error("El texto de la oferta está vacío o es demasiado largo.");
                 }
@@ -138,7 +138,7 @@ export default function AddJobPage() {
                 excludedProviders: []
             });
 
-            toast.info("Oferta procesada. Por favor revisa el resultado.");
+            toast.info("Oferta procesada. Revisá el resultado.");
             setRawText("");
             setLink("");
 
@@ -160,12 +160,12 @@ export default function AddJobPage() {
 
     return (
         <div className="container mx-auto px-4 py-8 max-w-5xl space-y-8">
-            <h1 className="text-3xl font-semibold text-center">Cargar Nueva Postulación</h1>
+            <h1 className="text-3xl font-semibold text-center">Cargar una postulación</h1>
 
             <div className="grid grid-cols-1 lg:grid-cols-[minmax(0,1fr)_320px] gap-6 items-start">
                 <div className="space-y-4 max-w-2xl">
                     <div className="space-y-2">
-                        <Label htmlFor="jobLink">Link de la Publicación</Label>
+                        <Label htmlFor="jobLink">Link de la publicación</Label>
                         <Input
                             id="jobLink"
                             placeholder="https://..."
@@ -175,10 +175,10 @@ export default function AddJobPage() {
                     </div>
 
                     <div className="space-y-2">
-                        <Label htmlFor="jobText">Texto de la Oferta (Título + Descripción)</Label>
+                        <Label htmlFor="jobText">Texto de la oferta (título y descripción)</Label>
                         <Textarea
                             id="jobText"
-                            placeholder="Pega aquí todo el contenido de la oferta..."
+                            placeholder="Pegá acá todo el contenido de la oferta"
                             className="min-h-[300px]"
                             value={rawText}
                             onChange={(e) => setRawText(e.target.value)}
@@ -224,14 +224,14 @@ export default function AddJobPage() {
                         ) : isQuotaExhausted ? (
                             "Límite diario alcanzado"
                         ) : (
-                            "Procesar y Guardar"
+                            "Procesar y guardar"
                         )}
                     </Button>
                 </div>
 
                 <aside className="w-full max-w-sm mt-2 lg:mt-5 lg:ml-auto lg:sticky lg:top-6">
                     <div className="rounded-lg border bg-card p-4 space-y-4">
-                        <p className="text-sm font-medium">Así estás frente a lo que pide el mercado 👇</p>
+                        <p className="text-sm font-medium">Así estás frente a lo que pide el mercado</p>
                         {isHydrating ? (
                             <div className="space-y-1 text-sm text-muted-foreground">
                                 <p>Cargando información...</p>
@@ -239,7 +239,7 @@ export default function AddJobPage() {
                         ) : cvs.length === 0 ? (
                             <div className="space-y-1 text-sm text-muted-foreground">
                                 <p>Aún no tenés un CV cargado.</p>
-                                <p>Andá a &quot;Mi Perfil&quot; para cargar tu CV y ver coincidencias.</p>
+                                <p>Andá a &quot;Mi perfil&quot; para cargar tu CV y ver coincidencias.</p>
                             </div>
                         ) : keywordStats.length === 0 ? (
                             <div className="space-y-1 text-sm text-muted-foreground">
@@ -277,7 +277,7 @@ export default function AddJobPage() {
                                             ))}
                                         </div>
                                     ) : (
-                                        <p className="text-sm text-muted-foreground">¡Vas muy bien! No hay faltantes destacados.</p>
+                                        <p className="text-sm text-muted-foreground">Vas muy bien. No hay faltantes destacados.</p>
                                     )}
                                 </div>
                             </div>

@@ -10,7 +10,7 @@ import { ProvidersPanel } from "@/components/admin/ProvidersPanel";
 export default function AdminPage() {
   return (
     <div className="container mx-auto p-6 space-y-6">
-      <h1 className="text-3xl font-semibold">Admin Panel</h1>
+      <h1 className="text-3xl font-semibold">Administración</h1>
 
       <Tabs defaultValue="dictionary" className="space-y-6">
         <TabsList className="h-auto flex-wrap justify-start">

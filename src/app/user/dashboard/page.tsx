@@ -89,7 +89,7 @@ export default function DashboardPage() {
                         <CardHeader>
                             <CardTitle>Gestión de Datos (Legacy)</CardTitle>
                             <CardDescription>
-                                Importa o exporta tus datos manualmente si lo necesitas.
+                                Importá o exportá tus datos cuando lo necesites.
                             </CardDescription>
                         </CardHeader>
                         <CardContent>

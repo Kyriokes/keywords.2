@@ -12,9 +12,9 @@ export default function LoginPage() {
           <div className="mx-auto bg-primary/10 p-3 rounded-full w-fit mb-4">
             <Lock className="w-6 h-6 text-primary" />
           </div>
-          <CardTitle>Iniciar Sesión</CardTitle>
+          <CardTitle>Iniciar sesión</CardTitle>
           <CardDescription>
-            Ingresa con tu cuenta de Google para continuar.
+            Entrá con tu cuenta de Google para continuar.
           </CardDescription>
         </CardHeader>
         <CardContent>

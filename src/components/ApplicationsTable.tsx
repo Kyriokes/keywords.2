@@ -159,7 +159,7 @@ export function ApplicationsTable({ insights }: ApplicationsTableProps) {
         if (!match || match.total === 0) {
           const reason = matches
             ? "Esta postulación no tiene habilidades detectadas"
-            : "Subí tu CV en Mi Perfil para ver la coincidencia";
+            : "Subí tu CV en Mi perfil para ver la coincidencia";
           return <span className="text-muted-foreground" title={reason}>-</span>;
         }
         return (

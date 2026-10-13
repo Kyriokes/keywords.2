@@ -33,7 +33,7 @@ export function CvDropBox() {
     const isPdf = file.name.toLowerCase().endsWith('.pdf')
     const isDocx = file.name.toLowerCase().endsWith('.docx')
     if (!isPdf && !isDocx) {
-      toast.error("Formato no soportado. Por favor sube un archivo PDF o DOCX.");
+      toast.error("Formato no soportado. Subí un archivo PDF o DOCX.");
       return
     }
     
@@ -118,13 +118,13 @@ export function CvDropBox() {
         </div>
         
         <h3 className="text-xl font-semibold mb-2">
-          {isBusy ? "Procesando..." : "Sube tu CV"}
+          {isBusy ? "Procesando..." : "Subí tu CV"}
         </h3>
         
         <p className="text-sm text-muted-foreground max-w-[200px]">
           {isDragging 
-              ? "¡Suelta el archivo aquí!" 
-              : "Arrastra tu PDF o DOCX aquí, o haz click para buscar"}
+              ? "Soltá el archivo acá" 
+              : "Arrastrá tu PDF o DOCX acá, o hacé clic para buscarlo"}
         </p>
 
         {!isBusy && !isDragging && (

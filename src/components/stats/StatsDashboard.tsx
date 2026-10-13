@@ -186,7 +186,7 @@ export function StatsDashboard({
               title="Subí tu CV para medir cuánto cubrís"
               description="Ya sabemos qué piden tus postulaciones. Con tu CV te mostramos qué tenés y qué te conviene sumar."
               href="/user/profile"
-              action="Ir a Mi Perfil"
+              action="Ir a Mi perfil"
               compact
             />
           )}
