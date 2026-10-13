@@ -72,9 +72,11 @@ export default auth((req) => {
   return;
 });
 
-// Invokes the proxy on all paths except for static files and next internals
+// Invokes the proxy on all paths except for static files and next internals.
+// El canal de recarga en caliente (solo existe en desarrollo) también queda afuera:
+// sin sesión el proxy lo redirigía al login y la página no se actualizaba sola.
 export const config = {
   matcher: [
-    "/((?!_next/static|_next/image|favicon.ico|.*\\.(?:svg|png|jpg|jpeg|gif|webp|ico)$).*)",
+    "/((?!_next/static|_next/image|_next/hmr|_next/webpack-hmr|favicon.ico|.*\\.(?:svg|png|jpg|jpeg|gif|webp|ico)$).*)",
   ],
 };

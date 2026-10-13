@@ -17,7 +17,7 @@ export function CvList() {
         try {
             await removeCv(id);
             toast.success('CV eliminado correctamente');
-        } catch (error) {
+        } catch {
             toast.error('Error al eliminar el CV');
         }
     }
@@ -26,7 +26,7 @@ export function CvList() {
   const handleSelect = async (id: string) => {
       try {
           await selectCv(id);
-      } catch (error) {
+      } catch {
           toast.error('Error al seleccionar el CV');
       }
   }
