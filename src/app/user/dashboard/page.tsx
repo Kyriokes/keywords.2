@@ -3,6 +3,8 @@
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { LoadSaveDropzone } from "@/components/LoadSaveDropzone";
 import { useApplicationStore } from "@/store/applicationStore";
+import { useCvStore } from "@/store/cvStore";
+import { useKeywordInsights } from "@/lib/stats/useKeywordInsights";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { useEffect } from "react";
 import { ApplicationsTable } from "@/components/ApplicationsTable";
@@ -12,9 +14,16 @@ import { Button } from "@/components/ui/button";
 export default function DashboardPage() {
     const { applications, fetchApplications, loadFailed } = useApplicationStore();
     
+    const { cvs, fetchCVs } = useCvStore();
+
     useEffect(() => {
         fetchApplications();
-    }, [fetchApplications]);
+        fetchCVs();
+    }, [fetchApplications, fetchCVs]);
+
+    // Keywords de las postulaciones cruzadas con el CV activo: alimentan la tabla y Estadísticas
+    const activeCv = cvs.find((cv) => cv.isPrimary) || cvs[0];
+    const { insights, isLoading: isLoadingInsights } = useKeywordInsights(activeCv?.id, applications.length);
 
     return (
         <div className="container mx-auto px-4 py-8 space-y-8">
@@ -56,7 +65,7 @@ export default function DashboardPage() {
                             </CardDescription>
                         </CardHeader>
                         <CardContent>
-                            <ApplicationsTable />
+                            <ApplicationsTable insights={insights} />
                         </CardContent>
                     </Card>
                 </TabsContent>
@@ -70,7 +79,7 @@ export default function DashboardPage() {
                             </CardDescription>
                         </CardHeader>
                         <CardContent>
-                             <StatsView />
+                             <StatsView insights={insights} isLoading={isLoadingInsights} />
                         </CardContent>
                     </Card>
                 </TabsContent>

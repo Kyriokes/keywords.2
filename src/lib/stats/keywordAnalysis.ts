@@ -112,3 +112,38 @@ export function summarizeKeywords({
     byCategory,
   };
 }
+
+export interface ApplicationMatch {
+  /** Keywords de la postulación que están en el CV. */
+  have: number;
+  /** Keywords que pide la postulación. */
+  total: number;
+  /** have / total, de 0 a 1; 0 si la postulación no tiene keywords. */
+  ratio: number;
+  /** Las keywords de la postulación, primero las que faltan. */
+  keywords: InsightKeyword[];
+}
+
+/** Cuánto de lo que pide cada postulación está en el CV. */
+export function matchByApplication(
+  keywords: InsightKeyword[],
+  byApplication: Record<string, string[]>
+): Record<string, ApplicationMatch> {
+  const keywordById = new Map(keywords.map((keyword) => [keyword.id, keyword]));
+
+  const matches: Record<string, ApplicationMatch> = {};
+  for (const [applicationId, keywordIds] of Object.entries(byApplication)) {
+    const requested = Array.from(new Set(keywordIds))
+      .flatMap((keywordId) => keywordById.get(keywordId) ?? [])
+      .sort((a, b) => Number(a.inCv) - Number(b.inCv) || a.name.localeCompare(b.name, "es"));
+
+    const have = requested.filter((keyword) => keyword.inCv).length;
+    matches[applicationId] = {
+      have,
+      total: requested.length,
+      ratio: requested.length > 0 ? have / requested.length : 0,
+      keywords: requested,
+    };
+  }
+  return matches;
+}

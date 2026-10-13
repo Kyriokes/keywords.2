@@ -24,10 +24,12 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle, CardFooter } from "@/components/ui/card";
-import { ArrowUpDown, ExternalLink, Trash2, X, Eye } from "lucide-react";
+import { ArrowUpDown, Check, ExternalLink, Minus, Trash2, X, Eye } from "lucide-react";
 import { ApplicationStatus, JobApplication, useApplicationStore } from "@/store/applicationStore";
 import { toast } from "sonner";
 import { SENIORITY_LABELS, isSeniority } from "@/lib/positions/rules";
+import type { KeywordInsights } from "@/actions/insights-actions";
+import { matchByApplication } from "@/lib/stats/keywordAnalysis";
 
 const STATUS_OPTIONS: { value: ApplicationStatus; label: string }[] = [
   { value: "APPLIED", label: "Enviada" },
@@ -44,8 +46,19 @@ const STATUS_COLOR_CLASS: Record<ApplicationStatus, string> = {
   REJECTED: "text-red-600",
 };
 
-export function ApplicationsTable() {
+interface ApplicationsTableProps {
+  /** Keywords de las postulaciones cruzadas con el CV activo; null mientras cargan. */
+  insights: KeywordInsights | null;
+}
+
+export function ApplicationsTable({ insights }: ApplicationsTableProps) {
   const { applications, removeApplication, updateApplicationStatus } = useApplicationStore();
+
+  // Sin CV no se puede decir qué tenés: la columna queda vacía
+  const matches = useMemo(
+    () => (insights?.cvId ? matchByApplication(insights.keywords, insights.byApplication) : null),
+    [insights]
+  );
   const [sorting, setSorting] = useState<SortingState>([]);
   const [columnFilters, setColumnFilters] = useState<ColumnFiltersState>([]);
   const [globalFilter, setGlobalFilter] = useState("");
@@ -120,6 +133,41 @@ export function ApplicationsTable() {
                 {isSeniority(seniority) && `, ${SENIORITY_LABELS[seniority]}`}
               </div>
             )}
+          </div>
+        );
+      },
+    },
+    {
+      id: "match",
+      // Sin dato va al final al ordenar de mayor a menor
+      accessorFn: (app) => matches?.[app.id]?.ratio ?? -1,
+      header: ({ column }) => {
+        return (
+          <Button
+            variant="ghost"
+            onClick={() => column.toggleSorting(column.getIsSorted() !== "desc")}
+          >
+            Coincidencia
+            <ArrowUpDown className="ml-2 h-4 w-4" />
+          </Button>
+        );
+      },
+      cell: ({ row }) => {
+        const match = matches?.[row.original.id];
+        if (!match || match.total === 0) {
+          const reason = matches
+            ? "Esta postulación no tiene habilidades detectadas"
+            : "Subí tu CV en Mi Perfil para ver la coincidencia";
+          return <span className="text-muted-foreground" title={reason}>-</span>;
+        }
+        return (
+          <div className="w-24 space-y-1" title={`Tenés ${match.have} de las ${match.total} habilidades que pide`}>
+            <p className="text-sm tabular-nums text-muted-foreground">
+              <span className="font-medium text-foreground">{match.have}</span> de {match.total}
+            </p>
+            <div className="h-1.5 overflow-hidden rounded-[4px] bg-muted">
+              <div className="h-full rounded-r-[4px] bg-skill-have" style={{ width: `${match.ratio * 100}%` }} />
+            </div>
           </div>
         );
       },
@@ -352,7 +400,26 @@ export function ApplicationsTable() {
                 </div>
               </div>
               
-              {selectedApp.detectedWords && selectedApp.detectedWords.length > 0 && (
+              {matches?.[selectedApp.id]?.total ? (
+                <div>
+                  <h4 className="font-semibold mb-2">
+                    Tenés {matches[selectedApp.id].have} de las {matches[selectedApp.id].total} habilidades que pide
+                  </h4>
+                  <ul className="flex flex-wrap gap-2">
+                    {matches[selectedApp.id].keywords.map((keyword) => (
+                      <li key={keyword.id} className="flex items-center gap-1.5 rounded-md bg-secondary px-2 py-1 text-xs font-medium text-secondary-foreground">
+                        {keyword.inCv ? (
+                          <Check className="size-3.5 text-skill-have" aria-hidden />
+                        ) : (
+                          <Minus className="size-3.5 text-skill-gap" aria-hidden />
+                        )}
+                        <span className="sr-only">{keyword.inCv ? "La tenés:" : "Te falta:"}</span>
+                        {keyword.name}
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              ) : selectedApp.detectedWords && selectedApp.detectedWords.length > 0 && (
                 <div>
                   <h4 className="font-semibold mb-2">Palabras Clave Detectadas</h4>
                   <div className="flex flex-wrap gap-2">

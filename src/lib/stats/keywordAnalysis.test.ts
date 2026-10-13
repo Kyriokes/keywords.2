@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { summarizeKeywords, type InsightKeyword } from "./keywordAnalysis";
+import { matchByApplication, summarizeKeywords, type InsightKeyword } from "./keywordAnalysis";
 
 const keyword = (id: string, inCv: boolean, extra: Partial<InsightKeyword> = {}): InsightKeyword => ({
   id,
@@ -101,5 +101,32 @@ describe("summarizeKeywords", () => {
   it("devuelve ceros cuando no hay nada que analizar", () => {
     const summary = summarizeKeywords({ keywords, byApplication, applicationIds: [] });
     expect(summary).toMatchObject({ coverage: 0, haveCount: 0, missingCount: 0, stats: [], gaps: [] });
+  });
+});
+
+describe("matchByApplication", () => {
+  it("cuenta por postulación cuántas keywords están en el CV", () => {
+    const matches = matchByApplication(keywords, byApplication);
+
+    expect(matches.a1).toMatchObject({ have: 1, total: 2, ratio: 0.5 });
+    expect(matches.a2).toMatchObject({ have: 1, total: 3 });
+    expect(matches.a3).toMatchObject({ have: 1, total: 1, ratio: 1 });
+    expect(matches.a4).toMatchObject({ have: 2, total: 2, ratio: 1 });
+  });
+
+  it("lista primero las que faltan", () => {
+    const { keywords: listed } = matchByApplication(keywords, byApplication).a2;
+    expect(listed.map((item) => [item.id, item.inCv])).toEqual([
+      ["docker", false], ["sql", false], ["react", true],
+    ]);
+  });
+
+  it("ignora keywords repetidas o que no vinieron en el catálogo", () => {
+    const matches = matchByApplication(keywords, { x: ["react", "react", "bloqueada"] });
+    expect(matches.x).toMatchObject({ have: 1, total: 1, ratio: 1 });
+  });
+
+  it("da cero, sin dividir por cero, para una postulación sin keywords", () => {
+    expect(matchByApplication(keywords, { vacia: [] }).vacia).toMatchObject({ have: 0, total: 0, ratio: 0 });
   });
 });
