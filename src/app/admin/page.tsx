@@ -2,6 +2,7 @@
 
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { DataPanel } from "@/components/admin/DataPanel";
+import { DictionaryEditor } from "@/components/admin/DictionaryEditor";
 import { DictionaryQueue } from "@/components/admin/DictionaryQueue";
 import { PositionsQueue } from "@/components/admin/PositionsQueue";
 import { ProvidersPanel } from "@/components/admin/ProvidersPanel";
@@ -21,6 +22,7 @@ export default function AdminPage() {
 
         <TabsContent value="dictionary" className="space-y-6">
           <DictionaryQueue />
+          <DictionaryEditor />
         </TabsContent>
 
         <TabsContent value="positions">

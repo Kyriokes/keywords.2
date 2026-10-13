@@ -11,6 +11,7 @@ import {
   blockKeyword,
   getDictionaryQueue,
   mergeKeyword,
+  mergeKnownAliases,
   searchDictionary,
   type DictionaryQueue as Queue,
   type DictionaryTarget,
@@ -22,6 +23,7 @@ import type { ActionResult } from "@/lib/validation";
 export function DictionaryQueue() {
   const [queue, setQueue] = useState<Queue | null>(null);
   const [failed, setFailed] = useState(false);
+  const [merging, setMerging] = useState(false);
 
   useEffect(() => {
     let cancelled = false;
@@ -56,6 +58,29 @@ export function DictionaryQueue() {
     }
   };
 
+  const mergeAllKnown = async () => {
+    if (!queue) return;
+    const question = queue.knownAliases === 1
+      ? "Hay 1 término pendiente que el diccionario ya conoce como alias. ¿Fusionarlo con su entrada?"
+      : `Hay ${queue.knownAliases} términos pendientes que el diccionario ya conoce como alias. ¿Fusionarlos con sus entradas?`;
+    if (!confirm(question)) return;
+
+    setMerging(true);
+    try {
+      const result = await mergeKnownAliases();
+      if (!result.ok) {
+        toast.error(result.message);
+        return;
+      }
+      toast.success(result.data.merged === 1 ? "Se fusionó 1 término" : `Se fusionaron ${result.data.merged} términos`);
+      setQueue(await getDictionaryQueue());
+    } catch {
+      toast.error("No se pudieron fusionar los términos.");
+    } finally {
+      setMerging(false);
+    }
+  };
+
   return (
     <Card>
       <CardHeader>
@@ -69,14 +94,26 @@ export function DictionaryQueue() {
         </CardDescription>
       </CardHeader>
       {queue && queue.pending.length > 0 && (
-        <CardContent>
+        <CardContent className="space-y-4">
+          {queue.knownAliases > 0 && (
+            <div className="flex flex-wrap items-center justify-between gap-3 rounded-lg border p-4 text-sm">
+              <p>
+                {queue.knownAliases === 1
+                  ? "1 término pendiente ya es alias de una entrada del diccionario."
+                  : `${queue.knownAliases} términos pendientes ya son alias de una entrada del diccionario.`}
+              </p>
+              <Button size="sm" disabled={merging} onClick={mergeAllKnown}>
+                {queue.knownAliases === 1 ? "Fusionarlo" : "Fusionarlos todos"}
+              </Button>
+            </div>
+          )}
           <ul className="divide-y border-y">
             {queue.pending.map((keyword) => (
               <PendingRow key={keyword.id} keyword={keyword} onResolve={resolve} />
             ))}
           </ul>
           {queue.pendingTotal > queue.pending.length && (
-            <p className="pt-3 text-sm text-muted-foreground">
+            <p className="text-sm text-muted-foreground">
               Se muestran los {queue.pending.length} más pedidos. Al resolverlos, recargá para ver los siguientes.
             </p>
           )}
@@ -104,7 +141,7 @@ interface PendingRowProps {
   onResolve: (id: string, action: Promise<ActionResult>, done: string) => Promise<void>;
 }
 
-function PendingRow({ keyword, onResolve }: PendingRowProps) {
+export function PendingRow({ keyword, onResolve }: PendingRowProps) {
   const [displayName, setDisplayName] = useState(keyword.name);
   const [category, setCategory] = useState<KeywordCategory | "">("");
   const [query, setQuery] = useState("");

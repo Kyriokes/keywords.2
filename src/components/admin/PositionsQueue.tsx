@@ -132,7 +132,7 @@ interface PendingTitleRowProps {
   onResolve: (action: Resolution) => Promise<void>;
 }
 
-function PendingTitleRow({ group, roles, busy, onResolve }: PendingTitleRowProps) {
+export function PendingTitleRow({ group, roles, busy, onResolve }: PendingTitleRowProps) {
   const [phrase, setPhrase] = useState(group.core);
   const [target, setTarget] = useState("");
   const [newRoleName, setNewRoleName] = useState("");

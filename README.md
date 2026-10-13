@@ -89,16 +89,18 @@ pnpm dev
 ```
 Navega a [http://localhost:3000](http://localhost:3000) para acceder a la plataforma.
 
-### 5. Diccionario de keywords
+### 5. Diccionario de keywords y de roles
 Las keywords de CVs y ofertas pasan por un mismo diccionario, que une las variantes de un término ("React.js", "ReactJS" y "React" son una sola habilidad) y les asigna una categoría. Lo que el diccionario no conoce se guarda como "sin verificar" y aparece en `/admin` para aprobarlo, fusionarlo con una entrada existente o bloquearlo.
 
-La semilla está en `prisma/dictionary/tech.json` (tecnologías, herramientas y metodologías de IT, con alias en español e inglés). Para cargarla:
+Los títulos de las ofertas pasan por un diccionario de roles: "React Engineer Semi Senior" y "Desarrollador/a Frontend Sr" son el mismo rol (Frontend Developer), con su seniority aparte. El clasificador busca una frase de rol dentro del título y, si no la hay, una tecnología que lo delate; lo que no reconoce queda en `/admin` → Puestos para asignarlo a un rol.
+
+Las semillas están en `prisma/dictionary`: `tech.json` (tecnologías, herramientas y metodologías de IT, con alias en español e inglés) y `roles.json` (roles de IT). Para cargarlas:
 ```bash
 pnpm dictionary:seed
 ```
 Se puede correr todas las veces que haga falta: no pisa lo que ya editó un admin. Con `--dry-run` solo informa qué haría.
 
-Si la base tiene datos anteriores al diccionario, este script los estandariza (fusiona variantes, recalcula las keywords de cada CV desde su texto y borra las que quedan sin uso):
+Si la base tiene datos anteriores al diccionario, este script los estandariza: fusiona variantes de keywords, recalcula las keywords de cada CV desde su texto, borra las que quedan sin uso y le asigna un rol a cada postulación. En simulación informa qué porcentaje de los títulos queda clasificado:
 ```bash
 pnpm dictionary:backfill           # simulación: informa, no escribe
 pnpm dictionary:backfill --apply   # aplica los cambios
