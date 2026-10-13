@@ -28,7 +28,7 @@ export default function DashboardPage() {
     return (
         <div className="container mx-auto px-4 py-8 space-y-8">
             <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
-                <h1 className="text-4xl font-bold tracking-tight bg-clip-text text-transparent bg-gradient-to-r from-primary to-primary/60 text-black dark:text-white">
+                <h1 className="text-3xl font-semibold sm:text-4xl">
                     Panel de Control
                 </h1>
                 <div className="w-full md:w-auto">

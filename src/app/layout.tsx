@@ -50,11 +50,8 @@ export default async function RootLayout({
   const session = await auth();
 
   return (
-    <html lang="es">
-      <body
-        className={`${geistSans.variable} ${geistMono.variable} antialiased`}
-        suppressHydrationWarning
-      >
+    <html lang="es" className={`${geistSans.variable} ${geistMono.variable}`}>
+      <body className="antialiased" suppressHydrationWarning>
         <a
           href="#contenido"
           className="sr-only focus:not-sr-only focus:fixed focus:top-4 focus:left-4 focus:z-50 focus:rounded-lg focus:bg-foreground focus:px-3 focus:py-2 focus:text-sm focus:font-semibold focus:text-background"

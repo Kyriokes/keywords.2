@@ -160,7 +160,7 @@ export default function AddJobPage() {
 
     return (
         <div className="container mx-auto px-4 py-8 max-w-5xl space-y-8">
-            <h1 className="text-3xl font-bold text-center">Cargar Nueva Postulación</h1>
+            <h1 className="text-3xl font-semibold text-center">Cargar Nueva Postulación</h1>
 
             <div className="grid grid-cols-1 lg:grid-cols-[minmax(0,1fr)_320px] gap-6 items-start">
                 <div className="space-y-4 max-w-2xl">
@@ -189,9 +189,9 @@ export default function AddJobPage() {
                     {quota && !quota.isAdmin && (
                         <div className={`text-sm px-3 py-2 rounded-md ${
                             isQuotaExhausted
-                                ? "bg-red-50 text-red-600 border border-red-200"
+                                ? "border border-destructive/30 bg-destructive/10 text-destructive"
                                 : quota.used >= quota.limit * 0.8
-                                    ? "bg-yellow-50 text-yellow-700 border border-yellow-200"
+                                    ? "border bg-muted text-foreground"
                                     : "bg-muted text-muted-foreground"
                         }`}>
                             {isQuotaExhausted ? (

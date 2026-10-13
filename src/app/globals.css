@@ -92,19 +92,20 @@
 
 @media (prefers-color-scheme: dark) {
   :root {
-    --background: oklch(0.145 0 0);
+    /* Fondos oscuros planos, los mismos en toda la app: base, superficie y relleno */
+    --background: #181818;
     --foreground: oklch(0.985 0 0);
-    --card: oklch(0.205 0 0);
+    --card: #1f1f1f;
     --card-foreground: oklch(0.985 0 0);
-    --popover: oklch(0.205 0 0);
+    --popover: #1f1f1f;
     --popover-foreground: oklch(0.985 0 0);
     --primary: oklch(0.922 0 0);
     --primary-foreground: oklch(0.205 0 0);
-    --secondary: oklch(0.269 0 0);
+    --secondary: #272727;
     --secondary-foreground: oklch(0.985 0 0);
-    --muted: oklch(0.269 0 0);
+    --muted: #272727;
     --muted-foreground: oklch(0.708 0 0);
-    --accent: oklch(0.269 0 0);
+    --accent: #272727;
     --accent-foreground: oklch(0.985 0 0);
     --destructive: oklch(0.704 0.191 22.216);
     --border: oklch(1 0 0 / 10%);
@@ -129,19 +130,20 @@
 }
 
 .dark {
-  --background: oklch(0.145 0 0);
+  /* Fondos oscuros planos, los mismos en toda la app: base, superficie y relleno */
+  --background: #181818;
   --foreground: oklch(0.985 0 0);
-  --card: oklch(0.205 0 0);
+  --card: #1f1f1f;
   --card-foreground: oklch(0.985 0 0);
-  --popover: oklch(0.205 0 0);
+  --popover: #1f1f1f;
   --popover-foreground: oklch(0.985 0 0);
   --primary: oklch(0.922 0 0);
   --primary-foreground: oklch(0.205 0 0);
-  --secondary: oklch(0.269 0 0);
+  --secondary: #272727;
   --secondary-foreground: oklch(0.985 0 0);
-  --muted: oklch(0.269 0 0);
+  --muted: #272727;
   --muted-foreground: oklch(0.708 0 0);
-  --accent: oklch(0.269 0 0);
+  --accent: #272727;
   --accent-foreground: oklch(0.985 0 0);
   --destructive: oklch(0.704 0.191 22.216);
   --border: oklch(1 0 0 / 10%);
@@ -171,37 +173,28 @@
   body {
     @apply bg-background text-foreground;
   }
-}
-
-/* ---------- Landing ---------- */
-
-/* Geist se carga en el layout, pero la variable vive en el body y la tipografía por defecto se
-   resuelve en html: sin esta regla la portada saldría con la fuente del sistema. */
-body:has(.landing) {
-  font-family: var(--font-geist-sans), ui-sans-serif, system-ui, sans-serif;
-}
-
-/* En oscuro la landing usa su propia base. Va en el body, no en .landing, para que la
-   navegación y el pie (que viven en el layout) queden sobre el mismo fondo. */
-@media (prefers-color-scheme: dark) {
-  body:has(.landing) {
-    --background: #181818;
-    --card: #1f1f1f;
-    --popover: #1f1f1f;
-    --muted: #272727;
-    --secondary: #272727;
-    --accent: #272727;
+  /* Títulos sin palabras sueltas en la última línea; párrafos con cortes parejos */
+  h1,
+  h2,
+  h3 {
+    @apply tracking-tight text-balance;
+  }
+  p {
+    text-wrap: pretty;
+  }
+  /* Todo lo interactivo se mueve con la misma curva que la landing */
+  a,
+  button,
+  summary,
+  [role="tab"],
+  input,
+  textarea,
+  select {
+    transition-timing-function: var(--fluid);
   }
 }
 
-.dark body:has(.landing) {
-  --background: #181818;
-  --card: #1f1f1f;
-  --popover: #1f1f1f;
-  --muted: #272727;
-  --secondary: #272727;
-  --accent: #272727;
-}
+/* ---------- Landing ---------- */
 
 /* Título del hero: el único degradé de la página, y solo sobre el texto. */
 .landing-heading {

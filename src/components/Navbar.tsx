@@ -38,41 +38,41 @@ export function Navbar({ session }: NavbarProps) {
     }
 
     return (
-        <header className="sticky top-0 z-40 border-b bg-background/90 backdrop-blur">
-            <div className="container mx-auto flex items-center justify-between gap-4 px-4 py-4">
+        <header className="sticky top-0 z-40 border-b bg-background/70 backdrop-blur-xl">
+            <div className="container mx-auto flex items-center justify-between gap-4 px-4 py-3">
                 <Link
                     href={isLoggedIn ? "/user/dashboard" : "/"}
-                    className="text-xl font-semibold tracking-tight text-foreground"
+                    className="text-base font-semibold tracking-tight text-foreground"
                 >
                     KeyWords
                 </Link>
 
-                <nav className="hidden items-center gap-6 text-sm font-medium md:flex">
+                <nav className="hidden items-center text-sm font-medium md:flex">
                     <Link
                         href="/"
-                        className={`transition-colors ${isHome ? 'text-foreground' : 'text-muted-foreground hover:text-primary'}`}
+                        className="rounded-full px-3 py-2 text-muted-foreground transition-colors duration-300 hover:bg-muted hover:text-foreground"
                     >
                         Inicio
                     </Link>
                     {!isLoggedIn && (
-                        <Link href="/#como-funciona" className="text-muted-foreground transition-colors hover:text-primary">
+                        <Link href="/#como-funciona" className="rounded-full px-3 py-2 text-muted-foreground transition-colors duration-300 hover:bg-muted hover:text-foreground">
                             Cómo funciona
                         </Link>
                     )}
                     {isLoggedIn && (
                         <>
-                            <Link href="/user/add-job" className="text-muted-foreground transition-colors hover:text-primary">
-                                Agregar Postulación
+                            <Link href="/user/add-job" className="rounded-full px-3 py-2 text-muted-foreground transition-colors duration-300 hover:bg-muted hover:text-foreground">
+                                Agregar postulación
                             </Link>
-                            <Link href="/user/dashboard" className="text-muted-foreground transition-colors hover:text-primary">
-                                Mis Postulaciones
+                            <Link href="/user/dashboard" className="rounded-full px-3 py-2 text-muted-foreground transition-colors duration-300 hover:bg-muted hover:text-foreground">
+                                Mis postulaciones
                             </Link>
-                            <Link href="/user/profile" className="text-muted-foreground transition-colors hover:text-primary">
-                                Mi Perfil
+                            <Link href="/user/profile" className="rounded-full px-3 py-2 text-muted-foreground transition-colors duration-300 hover:bg-muted hover:text-foreground">
+                                Mi perfil
                             </Link>
                             {session?.user?.role === "ADMIN" && (
-                                <Link href="/admin" className="hover:text-red-500 text-muted-foreground/50 transition-colors text-xs">
-                                    (Admin)
+                                <Link href="/admin" className="rounded-full px-3 py-2 text-muted-foreground transition-colors duration-300 hover:bg-muted hover:text-foreground">
+                                    Admin
                                 </Link>
                             )}
                         </>
@@ -84,18 +84,15 @@ export function Navbar({ session }: NavbarProps) {
                         <Button 
                             variant="ghost" 
                             onClick={handleLogout}
-                            className="text-red-500 hover:text-red-600 hover:bg-red-50 dark:hover:bg-red-950/20"
+                            className="rounded-full text-muted-foreground"
                         >
-                            Cerrar Sesión
+                            Cerrar sesión
                         </Button>
                     ) : (
                         <div className="flex items-center gap-2">
-                            <span className="rounded-full border border-primary/30 bg-primary/10 px-2.5 py-1 text-xs font-medium text-primary">
-                                Empezá gratis
-                            </span>
                             <Link href="/login">
-                                <Button variant="default">
-                                    Iniciar Sesión
+                                <Button variant="default" className="rounded-full font-semibold">
+                                    Iniciar sesión
                                 </Button>
                             </Link>
                         </div>
