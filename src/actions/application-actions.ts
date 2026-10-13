@@ -8,7 +8,13 @@ import { providerManager } from "@/lib/ia/providerManager"
 import { isProviderId } from "@/lib/ia/providers/ids"
 import { detectKeywords, keywordName, resolveTerms } from "@/lib/keywords/dictionary"
 import { classifyJobTitle } from "@/lib/positions/dictionary"
-import { LIMITS, createApplicationSchema, firstIssueMessage, type ActionResult } from "@/lib/validation"
+import {
+  LIMITS,
+  createApplicationSchema,
+  firstIssueMessage,
+  parseApplicationStatus,
+  type ActionResult,
+} from "@/lib/validation"
 
 export interface CreateApplicationData {
   jobTitle: string
@@ -19,10 +25,10 @@ export interface CreateApplicationData {
   provider?: string
   /** El usuario ya revisó `detectedWords`: se guarda esa lista tal cual, sin sumarle nada. */
   reviewed?: boolean
+  /** Fecha (AAAA-MM-DD) y estado originales, cuando la postulación viene de un respaldo. */
+  date?: string
+  status?: string
 }
-
-const VALID_APPLICATION_STATUSES = ["APPLIED", "INTERVIEW", "SAVED", "REJECTED"] as const
-type ValidApplicationStatus = typeof VALID_APPLICATION_STATUSES[number]
 
 const applicationInclude = {
   keywords: {
@@ -134,6 +140,9 @@ export async function createApplication(
       jobDescription: input.jobDescription,
       link: input.link,
       provider,
+      // Sin valor, la base pone la fecha de hoy y el estado inicial
+      date: input.date,
+      status: input.status,
 
       // Relations
       positionId: positionId,
@@ -229,7 +238,7 @@ export async function updateApplicationStatus(id: string, status: string) {
     const session = await auth()
     if (!session?.user?.id) throw new Error("Unauthorized")
 
-    if (!VALID_APPLICATION_STATUSES.includes(status as ValidApplicationStatus)) {
+    if (!parseApplicationStatus(status)) {
       throw new Error("Invalid status")
     }
 

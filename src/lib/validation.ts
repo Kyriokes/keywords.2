@@ -79,6 +79,33 @@ const optionalLink = z
         return link;
     });
 
+export const APPLICATION_STATUSES = ["APPLIED", "INTERVIEW", "SAVED", "REJECTED"] as const;
+
+export type ApplicationStatusValue = typeof APPLICATION_STATUSES[number];
+
+/** Estado de una postulación importada; lo que no se reconoce se descarta y queda el valor por defecto. */
+export function parseApplicationStatus(value: unknown): ApplicationStatusValue | undefined {
+    return (APPLICATION_STATUSES as readonly unknown[]).includes(value) ? (value as ApplicationStatusValue) : undefined;
+}
+
+/**
+ * Fecha de una postulación importada, en formato AAAA-MM-DD. Una fecha ilegible, anterior
+ * al 2000 o futura se descarta: es preferible la fecha de hoy a una inventada.
+ */
+export function parseApplicationDate(value: unknown, now: Date = new Date()): Date | undefined {
+    if (typeof value !== "string" || !/^\d{4}-\d{2}-\d{2}$/.test(value.trim())) return undefined;
+
+    const date = new Date(`${value.trim()}T12:00:00.000Z`);
+    if (Number.isNaN(date.getTime())) return undefined;
+    // El motor acepta "2024-02-31" y lo corre a marzo: si no vuelve igual, la fecha no existía
+    if (date.toISOString().slice(0, 10) !== value.trim()) return undefined;
+    if (date.getUTCFullYear() < 2000) return undefined;
+    // Un día de margen por la diferencia horaria entre quien exporta y el servidor
+    if (date.getTime() > now.getTime() + 24 * 60 * 60 * 1000) return undefined;
+
+    return date;
+}
+
 export const createApplicationSchema = z.object({
     jobTitle: title,
     jobDescription: z
@@ -90,6 +117,9 @@ export const createApplicationSchema = z.object({
     positionTitle: title.optional(),
     provider: z.string().optional(),
     reviewed: z.boolean().optional(),
+    // Solo los manda la importación de un respaldo, para no perder el historial
+    date: z.unknown().optional().transform((value) => parseApplicationDate(value)),
+    status: z.unknown().optional().transform(parseApplicationStatus),
 });
 
 export const uploadCvSchema = z.object({

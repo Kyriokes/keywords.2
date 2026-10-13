@@ -1,7 +1,8 @@
 import * as XLSX from "xlsx";
 import { JobApplication } from "@/store/applicationStore";
+import { APPLICATION_STATUSES } from "@/lib/validation";
 
-const VALID_APPLICATION_STATUSES = new Set(["APPLIED", "INTERVIEW", "SAVED", "REJECTED"]);
+const VALID_APPLICATION_STATUSES = new Set<string>(APPLICATION_STATUSES);
 
 type SheetRow = Record<string, unknown>;
 

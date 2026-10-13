@@ -53,7 +53,10 @@ export function LoadSaveDropzone({ onFileSelected }: LoadSaveDropzoneProps) {
                   jobDescription: app.jobDescription || "",
                   link: app.link,
                   detectedWords: app.detectedWords || [],
-                  positionId: app.positionId
+                  positionId: app.positionId,
+                  // Sin esto el respaldo volvía con la fecha de hoy y todo como "Enviada"
+                  date: app.date,
+                  status: app.status
               });
               imported++;
           } catch(e) {
