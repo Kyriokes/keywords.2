@@ -3,32 +3,64 @@
 import { auth } from "@/auth"
 import prisma from "@/lib/prisma"
 import { revalidatePath } from "next/cache"
+import { toDesiredRoles } from "@/lib/positions/desired"
+import { getRoleCatalog } from "@/lib/positions/dictionary"
+import { OTHER_ROLE } from "@/lib/positions/rules"
 import { positionTitlesSchema, firstIssueMessage, type ActionResult } from "@/lib/validation"
 
-export async function getPositions() {
-  const session = await auth()
-  if (!session?.user?.id) return []
-
-  const profile = await prisma.profile.findUnique({
-    where: { userId: session.user.id },
-    include: { positions: true }
-  })
-
-  if (!profile) return []
-
-  return profile.positions.map((p) => p.title)
+export interface DesiredRolesState {
+  /** Roles deseados del usuario. */
+  selected: string[]
+  /** Puestos guardados antes del diccionario que no corresponden a ningún rol. */
+  unrecognized: string[]
+  /** Todos los roles que se pueden elegir. */
+  available: string[]
 }
 
-export async function updatePositions(newTitles: string[]): Promise<ActionResult<string[]>> {
+/**
+ * Puestos deseados del usuario como roles del diccionario. Los que se guardaron como texto
+ * libre se convierten al leerlos; en la base quedan normalizados la próxima vez que se guarde.
+ */
+export async function getDesiredRoles(): Promise<DesiredRolesState> {
+  const session = await auth()
+  if (!session?.user?.id) return { selected: [], unrecognized: [], available: [] }
+
+  const [profile, { dictionary, names }] = await Promise.all([
+    prisma.profile.findUnique({
+      where: { userId: session.user.id },
+      include: { positions: { orderBy: { createdAt: 'asc' } } }
+    }),
+    getRoleCatalog()
+  ])
+
+  const { roles, unrecognized } = toDesiredRoles(profile?.positions.map((p) => p.title) ?? [], dictionary, names)
+
+  return {
+    selected: roles,
+    unrecognized,
+    available: Array.from(names.values()).filter((name) => name !== OTHER_ROLE).sort((a, b) => a.localeCompare(b, "es"))
+  }
+}
+
+export async function getPositions() {
+  return (await getDesiredRoles()).selected
+}
+
+export async function updatePositions(
+  newTitles: string[]
+): Promise<ActionResult<{ roles: string[]; dropped: string[] }>> {
   const session = await auth()
   if (!session?.user?.id) throw new Error("Unauthorized")
 
-  // Trims, drops empty strings and duplicates, and enforces the max amount
+  // Trims, drops empty strings and duplicates
   const parsed = positionTitlesSchema.safeParse(newTitles)
   if (!parsed.success) {
     return { ok: false, code: "INVALID_INPUT", message: firstIssueMessage(parsed.error) }
   }
-  const validTitles = parsed.data
+
+  // Only dictionary roles are stored; anything else (e.g. free text from an old backup) is dropped
+  const { dictionary, names } = await getRoleCatalog()
+  const { roles: validTitles, unrecognized: dropped } = toDesiredRoles(parsed.data, dictionary, names)
 
   const profile = await prisma.profile.findUnique({
     where: { userId: session.user.id }
@@ -70,5 +102,5 @@ export async function updatePositions(newTitles: string[]): Promise<ActionResult
 
   revalidatePath('/user/profile')
   revalidatePath('/user/add-job')
-  return { ok: true, data: validTitles }
+  return { ok: true, data: { roles: validTitles, dropped } }
 }

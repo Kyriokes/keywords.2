@@ -50,7 +50,10 @@ export function DataPanel() {
       try {
         const data = JSON.parse(ev.target.result as string) as SystemBackup;
         if (confirm("Esto sobrescribirá tus puestos deseados y las estadísticas de proveedores guardadas en este navegador. ¿Estás seguro?")) {
-          if (data.positions && Array.isArray(data.positions)) setPositions(data.positions);
+          if (data.positions && Array.isArray(data.positions)) {
+            // Los puestos de un backup viejo pueden ser texto libre: solo se conservan los que son roles
+            setPositions(data.positions).catch(() => toast.error("No se pudieron restaurar los puestos."));
+          }
           if (data.stats) importStats(data.stats);
           toast.success("Backup restaurado correctamente");
           setTimeout(() => window.location.reload(), 1000);

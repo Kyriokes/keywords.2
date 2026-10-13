@@ -1,22 +1,30 @@
 import { create } from 'zustand';
-import { getPositions, updatePositions } from '@/actions/position-actions';
+import { getDesiredRoles, updatePositions } from '@/actions/position-actions';
 
 interface PositionState {
+  /** Roles deseados del usuario (nombres de rol del diccionario). */
   positions: string[];
+  /** Roles que se pueden elegir. */
+  availableRoles: string[];
+  /** Puestos guardados antes del diccionario que no corresponden a ningún rol. */
+  unrecognized: string[];
   isLoading: boolean;
   fetchPositions: () => Promise<void>;
-  setPositions: (positions: string[]) => Promise<void>;
+  /** Guarda los puestos deseados. Devuelve los que se descartaron por no ser roles del diccionario. */
+  setPositions: (positions: string[]) => Promise<string[]>;
   clearPositions: () => Promise<void>;
 }
 
 export const usePositionStore = create<PositionState>((set) => ({
   positions: [],
+  availableRoles: [],
+  unrecognized: [],
   isLoading: false,
   fetchPositions: async () => {
     set({ isLoading: true });
     try {
-      const positions = await getPositions();
-      set({ positions });
+      const { selected, unrecognized, available } = await getDesiredRoles();
+      set({ positions: selected, unrecognized, availableRoles: available });
     } catch (error) {
       console.error('Failed to fetch positions:', error);
     } finally {
@@ -28,8 +36,9 @@ export const usePositionStore = create<PositionState>((set) => ({
     try {
       const result = await updatePositions(newPositions);
       if (!result.ok) throw new Error(result.message);
-      // Se guarda lo que quedó en el servidor (sin vacíos ni duplicados)
-      set({ positions: result.data });
+      // Se guarda lo que quedó en el servidor; lo no reconocido ya no existe
+      set({ positions: result.data.roles, unrecognized: [] });
+      return result.data.dropped;
     } catch (error) {
       console.error('Failed to update positions:', error);
       throw error;
@@ -42,7 +51,7 @@ export const usePositionStore = create<PositionState>((set) => ({
       try {
           const result = await updatePositions([]);
           if (!result.ok) throw new Error(result.message);
-          set({ positions: [] });
+          set({ positions: [], unrecognized: [] });
       } catch (error) {
           console.error('Failed to clear positions:', error);
       } finally {

@@ -1,60 +1,48 @@
 'use client'
 
-import { useState, useEffect } from 'react'
-import { usePositionStore } from '@/store/PositionStore'
+import { useEffect, useState } from 'react'
+import { Loader2, X } from 'lucide-react'
 import { toast } from 'sonner'
-import { Loader2 } from 'lucide-react'
+import { Button } from '@/components/ui/button'
+import { Input } from '@/components/ui/input'
+import { usePositionStore } from '@/store/PositionStore'
+
+const MAX_POSITIONS = 10
+const MAX_RESULTS = 8
 
 export function DesiredPositions() {
-    const { positions, setPositions, fetchPositions, isLoading } = usePositionStore()
-    const [quantity, setQuantity] = useState(1)
-    const [localPositions, setLocalPositions] = useState<string[]>([''])
+    const { positions, availableRoles, unrecognized, setPositions, fetchPositions, isLoading } = usePositionStore()
+
+    // null mientras el usuario no tocó nada: se muestra lo guardado
+    const [draft, setDraft] = useState<string[] | null>(null)
+    const [query, setQuery] = useState('')
 
     // Cargar posiciones al montar
     useEffect(() => {
         fetchPositions();
     }, [fetchPositions]);
 
-    // Sincronizar estado local cuando llegan datos del servidor
-    useEffect(() => {
-         if (positions.length > 0) {
-             setLocalPositions(prev => {
-                 // Solo actualizar si es diferente para evitar loops
-                 if (JSON.stringify(prev) !== JSON.stringify(positions)) {
-                    setQuantity(positions.length);
-                    return positions;
-                }
-                return prev;
-            })
-        }
-    }, [positions])
+    const selected = draft ?? positions
+    const isFull = selected.length >= MAX_POSITIONS
+    const hasChanges = draft !== null || unrecognized.length > 0
 
-    const handleQuantityChange = (newQuantity: number) => {
-        setQuantity(newQuantity)
-        setLocalPositions(prev => {
-            const newPositions = [...prev]
-            if (newQuantity > prev.length) {
-                // Agregar inputs vacíos
-                for (let i = prev.length; i < newQuantity; i++) {
-                    newPositions.push('')
-                }
-            } else {
-                // Recortar inputs
-                newPositions.length = newQuantity
-            }
-            return newPositions
-        })
+    const search = query.trim().toLowerCase()
+    const matches = availableRoles.filter((role) => !selected.includes(role) && role.toLowerCase().includes(search))
+    const results = matches.slice(0, MAX_RESULTS)
+
+    const add = (role: string) => {
+        if (!isFull) setDraft([...selected, role])
     }
 
-    const handleInputChange = (index: number, value: string) => {
-        const newPositions = [...localPositions]
-        newPositions[index] = value
-        setLocalPositions(newPositions)
+    const remove = (role: string) => {
+        setDraft(selected.filter((item) => item !== role))
     }
 
     const handleSave = async () => {
         try {
-            await setPositions(localPositions)
+            await setPositions(selected)
+            setDraft(null)
+            setQuery('')
             toast.success('Puestos guardados correctamente')
         } catch (error) {
             toast.error(error instanceof Error ? error.message : 'Error al guardar puestos')
@@ -62,58 +50,90 @@ export function DesiredPositions() {
     }
 
     return (
-        <section className="p-6 border rounded-lg shadow-sm bg-card text-card-foreground max-w-2xl mx-auto my-8">
-            <h2 className="text-2xl font-bold mb-6 text-center">Puestos Deseados</h2>
-            
-            <div className="flex flex-col gap-6">
-                <div className="flex items-center gap-4 justify-center">
-                    <label className="font-medium">Cantidad de puestos:</label>
-                    <div className="flex items-center gap-3 bg-secondary/50 border rounded-md p-1">
-                        <button
-                            onClick={() => quantity > 1 && handleQuantityChange(quantity - 1)}
-                            disabled={quantity <= 1 || isLoading}
-                            className="w-8 h-8 flex items-center justify-center rounded hover:bg-muted disabled:opacity-50 disabled:cursor-not-allowed transition-colors font-bold"
-                            aria-label="Disminuir cantidad"
-                        >
-                            -
-                        </button>
-                        <span className="w-8 text-center font-medium">{quantity}</span>
-                        <button
-                            onClick={() => quantity < 10 && handleQuantityChange(quantity + 1)}
-                            disabled={quantity >= 10 || isLoading}
-                            className="w-8 h-8 flex items-center justify-center rounded hover:bg-muted disabled:opacity-50 disabled:cursor-not-allowed transition-colors font-bold"
-                            aria-label="Aumentar cantidad"
-                        >
-                            +
-                        </button>
-                    </div>
-                </div>
-
-                <div className="space-y-4">
-                    {localPositions.map((pos, index) => (
-                        <div key={index} className="flex flex-col gap-1">
-                            <label className="text-sm text-muted-foreground">Puesto #{index + 1}</label>
-                            <input
-                                type="text"
-                                value={pos}
-                                onChange={(e) => handleInputChange(index, e.target.value)}
-                                placeholder="Ej: Frontend Developer"
-                                disabled={isLoading}
-                                className="w-full p-3 border rounded-md bg-background focus:ring-2 focus:ring-blue-500 outline-none transition-all disabled:opacity-50"
-                            />
-                        </div>
-                    ))}
-                </div>
-
-                <button 
-                    onClick={handleSave}
-                    disabled={isLoading}
-                    className="w-full py-3 bg-blue-600 text-white font-semibold rounded-md hover:bg-blue-700 transition-colors shadow-sm mt-2 disabled:opacity-50 flex items-center justify-center gap-2"
-                >
-                    {isLoading ? <Loader2 className="animate-spin w-5 h-5" /> : null}
-                    {isLoading ? 'Guardando...' : 'Guardar Cambios'}
-                </button>
+        <section className="space-y-5 rounded-lg border bg-card p-6 text-card-foreground shadow-sm">
+            <div className="space-y-2">
+                <p className="text-sm text-muted-foreground">
+                    {selected.length === 0
+                        ? 'Todavía no elegiste ningún puesto.'
+                        : `Elegiste ${selected.length} de ${MAX_POSITIONS}.`}
+                </p>
+                {selected.length > 0 && (
+                    <ul className="flex flex-wrap gap-2">
+                        {selected.map((role) => (
+                            <li key={role}>
+                                <Button
+                                    type="button"
+                                    variant="secondary"
+                                    size="sm"
+                                    className="h-8 rounded-full"
+                                    onClick={() => remove(role)}
+                                    disabled={isLoading}
+                                    aria-label={`Quitar ${role}`}
+                                >
+                                    {role}
+                                    <X className="size-3.5" aria-hidden />
+                                </Button>
+                            </li>
+                        ))}
+                    </ul>
+                )}
             </div>
+
+            {unrecognized.length > 0 && (
+                <p className="rounded-md border border-dashed p-3 text-sm text-muted-foreground">
+                    Tenías guardados puestos que no corresponden a ningún rol: {unrecognized.join(', ')}.
+                    No se conservan al guardar; buscá abajo el rol más parecido.
+                </p>
+            )}
+
+            <div className="space-y-2">
+                <Input
+                    type="search"
+                    value={query}
+                    onChange={(event) => setQuery(event.target.value)}
+                    placeholder={isFull ? 'Quitá un puesto para sumar otro' : 'Buscar un rol, por ejemplo Backend'}
+                    aria-label="Buscar un rol para agregar"
+                    disabled={isLoading || isFull}
+                />
+                {!isFull && (
+                    results.length > 0 ? (
+                        <>
+                            <ul className="flex flex-wrap gap-2">
+                                {results.map((role) => (
+                                    <li key={role}>
+                                        <Button
+                                            type="button"
+                                            variant="outline"
+                                            size="sm"
+                                            className="h-8 rounded-full"
+                                            onClick={() => add(role)}
+                                            disabled={isLoading}
+                                        >
+                                            {role}
+                                        </Button>
+                                    </li>
+                                ))}
+                            </ul>
+                            {matches.length > results.length && (
+                                <p className="text-xs text-muted-foreground">
+                                    Hay {matches.length - results.length} roles más; escribí para acotar.
+                                </p>
+                            )}
+                        </>
+                    ) : (
+                        <p className="text-sm text-muted-foreground">
+                            {availableRoles.length === 0
+                                ? 'Todavía no hay roles cargados en el diccionario.'
+                                : 'Ningún rol coincide con esa búsqueda.'}
+                        </p>
+                    )
+                )}
+            </div>
+
+            <Button onClick={handleSave} disabled={isLoading || !hasChanges} className="w-full">
+                {isLoading ? <Loader2 className="animate-spin" /> : null}
+                {isLoading ? 'Guardando...' : 'Guardar Cambios'}
+            </Button>
         </section>
     )
 }

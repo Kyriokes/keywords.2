@@ -19,14 +19,26 @@ interface StatsDashboardProps {
   activeCvId?: string;
   onSelectCv: (id: string) => void;
   applications: Array<{ id: string; role?: string }>;
+  /** Puestos deseados del usuario: si alguno aparece en sus postulaciones, el análisis arranca filtrado por ellos. */
+  preferredRoles?: string[];
   insights: KeywordInsights | null;
   isLoading: boolean;
 }
 
-export function StatsDashboard({ cvs, activeCvId, onSelectCv, applications, insights, isLoading }: StatsDashboardProps) {
+const NO_ROLES: string[] = [];
+
+export function StatsDashboard({
+  cvs,
+  activeCvId,
+  onSelectCv,
+  applications,
+  preferredRoles = NO_ROLES,
+  insights,
+  isLoading,
+}: StatsDashboardProps) {
   // Se guarda lo que el usuario saca, no lo que queda: así un puesto o una habilidad
-  // nuevos entran al cálculo sin tener que sincronizar nada.
-  const [excludedPositions, setExcludedPositions] = useState<string[]>([]);
+  // nuevos entran al cálculo sin tener que sincronizar nada. null = todavía no tocó los puestos.
+  const [excludedOverride, setExcludedOverride] = useState<string[] | null>(null);
   const [hiddenIds, setHiddenIds] = useState<string[]>([]);
   const [includeUnverified, setIncludeUnverified] = useState(true);
 
@@ -35,10 +47,15 @@ export function StatsDashboard({ cvs, activeCvId, onSelectCv, applications, insi
     const roles = Array.from(new Set(applications.flatMap((app) => (app.role ? [app.role] : [])))).sort();
     return applications.some((app) => !app.role) ? [...roles, UNCLASSIFIED] : roles;
   }, [applications]);
-  const selectedPositions = useMemo(
-    () => positions.filter((position) => !excludedPositions.includes(position)),
-    [positions, excludedPositions]
-  );
+  const selectedPositions = useMemo(() => {
+    // Por defecto se analizan los puestos deseados que el usuario efectivamente tiene cargados
+    const preferred = positions.filter((position) => preferredRoles.includes(position));
+    const excluded = excludedOverride ?? (preferred.length > 0 ? positions.filter((p) => !preferred.includes(p)) : []);
+
+    const selected = positions.filter((position) => !excluded.includes(position));
+    // Si lo elegido ya no existe (por ejemplo, se borraron esas postulaciones) se vuelve a mostrar todo
+    return selected.length > 0 ? selected : positions;
+  }, [positions, preferredRoles, excludedOverride]);
 
   const hiddenSet = useMemo(() => new Set(hiddenIds), [hiddenIds]);
 
@@ -57,11 +74,13 @@ export function StatsDashboard({ cvs, activeCvId, onSelectCv, applications, insi
   }, [applications, insights, positions, selectedPositions, hiddenSet, includeUnverified]);
 
   const togglePosition = (position: string) => {
-    setExcludedPositions((previous) => {
-      if (previous.includes(position)) return previous.filter((item) => item !== position);
+    const excluded = positions.filter((item) => !selectedPositions.includes(item));
+    if (excluded.includes(position)) {
+      setExcludedOverride(excluded.filter((item) => item !== position));
+    } else if (selectedPositions.length > 1) {
       // Tiene que quedar al menos un puesto en el análisis
-      return selectedPositions.length > 1 ? [...previous, position] : previous;
-    });
+      setExcludedOverride([...excluded, position]);
+    }
   };
 
   const toggleHidden = (id: string) => {
