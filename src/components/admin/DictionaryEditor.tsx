@@ -99,10 +99,10 @@ export function EntryRow({ entry, onChanged }: { entry: DictionaryEntry; onChang
     return (
       <li className="flex flex-wrap items-center justify-between gap-3 py-3">
         <div className="min-w-0">
-          <p className="flex items-center gap-2 font-medium">
+          <div className="flex items-center gap-2 font-medium">
             <span className="truncate">{entry.name}</span>
             <Badge variant="outline" className="shrink-0 font-normal text-muted-foreground">Bloqueada</Badge>
-          </p>
+          </div>
           <p className="text-xs text-muted-foreground">{usage}</p>
         </div>
         <Button

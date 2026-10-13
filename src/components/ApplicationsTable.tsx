@@ -123,11 +123,13 @@ export function ApplicationsTable({ insights }: ApplicationsTableProps) {
         );
       },
       cell: ({ row }) => {
-        const { role, seniority } = row.original;
+        const { role, seniority, jobTitle } = row.original;
+        // Si el título ya es el nombre del rol, repetirlo debajo no agrega nada
+        const showRole = role && (role.toLowerCase() !== jobTitle.trim().toLowerCase() || isSeniority(seniority));
         return (
           <div>
             <div className="font-medium">{row.getValue("jobTitle")}</div>
-            {role && (
+            {showRole && (
               <div className="text-xs text-muted-foreground">
                 {role}
                 {isSeniority(seniority) && `, ${SENIORITY_LABELS[seniority]}`}
