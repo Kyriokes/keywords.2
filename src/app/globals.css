@@ -31,6 +31,8 @@
   /* Estadísticas: habilidad que el CV tiene / que le falta. Par validado para daltonismo. */
   --skill-have: #2a78d6;
   --skill-gap: #eb6834;
+  /* Curva única de movimiento de la landing: arranca rápido y frena largo, como algo con peso. */
+  --fluid: cubic-bezier(0.32, 0.72, 0, 1);
   --sidebar: oklch(0.985 0 0);
   --sidebar-foreground: oklch(0.145 0 0);
   --sidebar-primary: oklch(0.205 0 0);
@@ -63,6 +65,7 @@
   --color-chart-1: var(--chart-1);
   --color-skill-have: var(--skill-have);
   --color-skill-gap: var(--skill-gap);
+  --ease-fluid: var(--fluid);
   --color-ring: var(--ring);
   --color-input: var(--input);
   --color-border: var(--border);
@@ -167,5 +170,133 @@
   }
   body {
     @apply bg-background text-foreground;
+  }
+}
+
+/* ---------- Landing ---------- */
+
+/* Geist se carga en el layout, pero la variable vive en el body y la tipografía por defecto se
+   resuelve en html: sin esta regla la portada saldría con la fuente del sistema. */
+body:has(.landing) {
+  font-family: var(--font-geist-sans), ui-sans-serif, system-ui, sans-serif;
+}
+
+/* En oscuro la landing usa su propia base. Va en el body, no en .landing, para que la
+   navegación y el pie (que viven en el layout) queden sobre el mismo fondo. */
+@media (prefers-color-scheme: dark) {
+  body:has(.landing) {
+    --background: #181818;
+    --card: #1f1f1f;
+    --popover: #1f1f1f;
+    --muted: #272727;
+    --secondary: #272727;
+    --accent: #272727;
+  }
+}
+
+.dark body:has(.landing) {
+  --background: #181818;
+  --card: #1f1f1f;
+  --popover: #1f1f1f;
+  --muted: #272727;
+  --secondary: #272727;
+  --accent: #272727;
+}
+
+/* Título del hero: el único degradé de la página, y solo sobre el texto. */
+.landing-heading {
+  background-image: linear-gradient(to right, #000000, #666666);
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+}
+
+@media (prefers-color-scheme: dark) {
+  .landing-heading {
+    background-image: linear-gradient(to right, #ffffff, #9b9b9b);
+  }
+}
+
+.dark .landing-heading {
+  background-image: linear-gradient(to right, #ffffff, #9b9b9b);
+}
+
+/* Entrada del hero al cargar: CSS puro, así el contenido aparece aunque no corra JavaScript. */
+.rise {
+  animation: landing-rise 900ms var(--fluid) both;
+  animation-delay: calc(var(--rise-order, 0) * 90ms);
+}
+
+/* Entrada al scrollear. El estado oculto lo pone Reveal recién cuando el script cargó. */
+.reveal[data-reveal="pending"] {
+  opacity: 0;
+  transform: translateY(4rem);
+  filter: blur(12px);
+}
+
+.reveal[data-reveal="in"] {
+  transition:
+    opacity 800ms var(--fluid),
+    transform 800ms var(--fluid),
+    filter 800ms var(--fluid);
+  transition-delay: var(--reveal-delay, 0ms);
+}
+
+/* Frase que se enciende palabra por palabra. */
+.tagline[data-armed] .tagline-word {
+  opacity: 0.3;
+  transition: opacity 700ms var(--fluid);
+}
+
+.tagline[data-armed] .tagline-word[data-on] {
+  opacity: 1;
+}
+
+/* Recorrido de "Cómo funciona": en escritorio se atenúan los pasos que no están en foco. */
+@media (min-width: 64rem) {
+  .steps[data-armed] .step {
+    opacity: 0.3;
+    transition: opacity 700ms var(--fluid);
+  }
+
+  .steps[data-armed] .step[data-active="true"] {
+    opacity: 1;
+  }
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  html:has(.landing) {
+    scroll-behavior: smooth;
+  }
+}
+
+/* Con "reducir movimiento" nada se desplaza ni se desenfoca: quedan solo los fundidos. */
+@media (prefers-reduced-motion: reduce) {
+  .rise {
+    animation-name: landing-fade;
+    animation-duration: 600ms;
+  }
+
+  .reveal[data-reveal="pending"] {
+    transform: none;
+    filter: none;
+  }
+
+  .reveal[data-reveal="in"] {
+    transition: opacity 600ms var(--fluid);
+  }
+}
+
+@keyframes landing-rise {
+  from {
+    opacity: 0;
+    transform: translateY(4rem);
+    filter: blur(12px);
+  }
+}
+
+@keyframes landing-fade {
+  from {
+    opacity: 0;
   }
 }

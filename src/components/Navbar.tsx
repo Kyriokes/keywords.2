@@ -6,6 +6,7 @@ import { Button } from '@/components/ui/button';
 import { toast } from 'sonner';
 import { signOut } from "next-auth/react";
 import type { Session } from "next-auth";
+import { LandingNav } from "@/components/landing/LandingNav";
 
 interface NavbarProps {
     session: Session | null;
@@ -24,6 +25,17 @@ export function Navbar({ session }: NavbarProps) {
             toast.error('Error al cerrar sesión');
         }
     };
+
+    // La portada tiene su propia navegación; el resto de la app conserva la barra
+    if (isHome) {
+        return (
+            <LandingNav
+                isLoggedIn={isLoggedIn}
+                isAdmin={session?.user?.role === "ADMIN"}
+                onLogout={handleLogout}
+            />
+        );
+    }
 
     return (
         <header className="sticky top-0 z-40 border-b bg-background/90 backdrop-blur">
