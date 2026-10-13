@@ -7,6 +7,7 @@ import { revalidatePath } from "next/cache"
 import { providerManager } from "@/lib/ia/providerManager"
 import { isProviderId } from "@/lib/ia/providers/ids"
 import { detectKeywords, keywordName, resolveTerms } from "@/lib/keywords/dictionary"
+import { classifyJobTitle } from "@/lib/positions/dictionary"
 import { LIMITS, createApplicationSchema, firstIssueMessage, type ActionResult } from "@/lib/validation"
 
 export interface CreateApplicationData {
@@ -25,7 +26,8 @@ const applicationInclude = {
   keywords: {
     include: { keyword: true }
   },
-  position: true
+  position: true,
+  canonicalPosition: true
 } satisfies Prisma.JobApplicationInclude
 
 type ApplicationWithRelations = Prisma.JobApplicationGetPayload<{ include: typeof applicationInclude }>
@@ -40,6 +42,9 @@ function toStoreApplication(app: ApplicationWithRelations) {
     link: app.link || undefined,
     detectedWords: app.keywords.filter((k) => !k.keyword.isBlocked).map((k) => keywordName(k.keyword)),
     positionId: app.position?.title || app.originalPositionTitle || undefined,
+    // Rol estandarizado y nivel, deducidos del título
+    role: app.canonicalPosition?.name || undefined,
+    seniority: app.seniority || undefined,
     provider: app.provider || undefined,
     status: app.status || "APPLIED"
   }
@@ -116,6 +121,8 @@ export async function createApplication(
     new Set([...(await resolveTerms(input.detectedWords)), ...detected.map((k) => k.id)])
   ).slice(0, LIMITS.applicationKeywords)
 
+  const classified = await classifyJobTitle(input.jobTitle)
+
   // Create Application
   const newApp = await prisma.jobApplication.create({
     data: {
@@ -128,6 +135,8 @@ export async function createApplication(
       // Relations
       positionId: positionId,
       originalPositionTitle: input.positionTitle, // Snapshot History
+      canonicalPositionId: classified.roleId,
+      seniority: classified.seniority,
       cvId: activeCv?.id,
 
       // Keywords Relation

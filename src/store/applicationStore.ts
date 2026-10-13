@@ -11,6 +11,9 @@ export interface JobApplication {
   jobDescription: string;
   detectedWords: string[];
   positionId?: string;
+  /** Rol estandarizado del diccionario (ej: "Frontend Developer"); ausente si no se pudo clasificar. */
+  role?: string;
+  seniority?: string;
   provider?: string;
   status: string;
 }

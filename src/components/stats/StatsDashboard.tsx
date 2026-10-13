@@ -11,11 +11,14 @@ import { CoverageSummary } from "./CoverageSummary";
 import { DemandRanking } from "./DemandRanking";
 import { StatsSidebar } from "./StatsSidebar";
 
+/** Chip que reúne las postulaciones cuyo título no corresponde a ningún rol del diccionario. */
+const UNCLASSIFIED = "Sin clasificar";
+
 interface StatsDashboardProps {
   cvs: Array<{ id: string; name: string }>;
   activeCvId?: string;
   onSelectCv: (id: string) => void;
-  applications: Array<{ id: string; positionId?: string }>;
+  applications: Array<{ id: string; role?: string }>;
   insights: KeywordInsights | null;
   isLoading: boolean;
 }
@@ -27,10 +30,11 @@ export function StatsDashboard({ cvs, activeCvId, onSelectCv, applications, insi
   const [hiddenIds, setHiddenIds] = useState<string[]>([]);
   const [includeUnverified, setIncludeUnverified] = useState(true);
 
-  const positions = useMemo(
-    () => Array.from(new Set(applications.flatMap((app) => (app.positionId?.trim() ? [app.positionId.trim()] : [])))),
-    [applications]
-  );
+  // Los puestos son roles estandarizados, no títulos de oferta: así no crecen con cada postulación
+  const positions = useMemo(() => {
+    const roles = Array.from(new Set(applications.flatMap((app) => (app.role ? [app.role] : [])))).sort();
+    return applications.some((app) => !app.role) ? [...roles, UNCLASSIFIED] : roles;
+  }, [applications]);
   const selectedPositions = useMemo(
     () => positions.filter((position) => !excludedPositions.includes(position)),
     [positions, excludedPositions]
@@ -39,10 +43,8 @@ export function StatsDashboard({ cvs, activeCvId, onSelectCv, applications, insi
   const hiddenSet = useMemo(() => new Set(hiddenIds), [hiddenIds]);
 
   const summary = useMemo(() => {
-    // Con todos los puestos marcados entran también las postulaciones sin puesto asignado
-    const everyPosition = selectedPositions.length === positions.length;
     const applicationIds = applications
-      .filter((app) => everyPosition || (app.positionId && selectedPositions.includes(app.positionId.trim())))
+      .filter((app) => selectedPositions.includes(app.role ?? UNCLASSIFIED))
       .map((app) => app.id);
 
     return summarizeKeywords({

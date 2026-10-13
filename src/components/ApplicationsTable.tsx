@@ -27,6 +27,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle, CardFooter }
 import { ArrowUpDown, ExternalLink, Trash2, X, Eye } from "lucide-react";
 import { ApplicationStatus, JobApplication, useApplicationStore } from "@/store/applicationStore";
 import { toast } from "sonner";
+import { SENIORITY_LABELS, isSeniority } from "@/lib/positions/rules";
 
 const STATUS_OPTIONS: { value: ApplicationStatus; label: string }[] = [
   { value: "APPLIED", label: "Enviada" },
@@ -108,7 +109,20 @@ export function ApplicationsTable() {
           </Button>
         );
       },
-      cell: ({ row }) => <div className="font-medium">{row.getValue("jobTitle")}</div>,
+      cell: ({ row }) => {
+        const { role, seniority } = row.original;
+        return (
+          <div>
+            <div className="font-medium">{row.getValue("jobTitle")}</div>
+            {role && (
+              <div className="text-xs text-muted-foreground">
+                {role}
+                {isSeniority(seniority) && `, ${SENIORITY_LABELS[seniority]}`}
+              </div>
+            )}
+          </div>
+        );
+      },
     },
     {
         id: "description",

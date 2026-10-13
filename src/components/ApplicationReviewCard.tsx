@@ -9,6 +9,7 @@ import { Card, CardHeader, CardTitle, CardContent, CardFooter } from './ui/card'
 import { Badge } from '@/components/ui/badge';
 import { Loader2, X, Check, RefreshCw, AlertTriangle } from 'lucide-react';
 import { toast } from 'sonner';
+import { SENIORITY_LABELS, isSeniority } from '@/lib/positions/rules';
 
 export function ApplicationReviewCard() {
     const { pendingApplication, setPendingApplication, addApplication } = useApplicationStore();
@@ -141,6 +142,16 @@ export function ApplicationReviewCard() {
                 <div>
                     <h3 className="text-sm font-medium text-muted-foreground mb-1">Puesto Detectado / Seleccionado</h3>
                     <div className="text-lg font-semibold">{data.jobTitle}</div>
+                    <p className="mt-1 text-sm text-muted-foreground">
+                        {data.role ? (
+                            <>
+                                Se agrupa como <span className="font-medium text-foreground">{data.role}</span>
+                                {isSeniority(data.seniority) && <>, nivel {SENIORITY_LABELS[data.seniority]}</>}
+                            </>
+                        ) : (
+                            "Todavía no corresponde a ningún rol del diccionario; queda sin clasificar."
+                        )}
+                    </p>
                 </div>
 
                 {/* Keywords */}

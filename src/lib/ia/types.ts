@@ -8,6 +8,9 @@ export interface AiKeyword {
 export interface AiResponse {
     palabrasClave: AiKeyword[];
     puesto?: string;
+    /** Rol estandarizado y nivel que el diccionario deduce de `puesto`. */
+    rol?: string;
+    seniority?: string;
     provider?: string;
 }
 

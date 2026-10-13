@@ -108,13 +108,20 @@ export interface AliasEntry {
 
 export type AliasIndex = Map<string, AliasEntry>;
 
+export interface Mention {
+    keywordId: string;
+    /** Posición del primer token de la coincidencia. */
+    start: number;
+    /** Cantidad de tokens que abarca. */
+    size: number;
+}
+
 /**
- * Detecta en un texto las keywords del diccionario. Recorre de izquierda a derecha y en cada
- * posición se queda con el alias más largo, sin solapar. Devuelve menciones por keyword.
+ * Coincidencias del diccionario en una secuencia de tokens. Recorre de izquierda a derecha
+ * y en cada posición se queda con el alias más largo, sin solapar.
  */
-export function matchText(text: string, index: AliasIndex): Map<string, number> {
-    const tokens = tokenizeText(text);
-    const mentions = new Map<string, number>();
+export function findMentions(tokens: TextToken[], index: AliasIndex): Mention[] {
+    const mentions: Mention[] = [];
 
     let position = 0;
     while (position < tokens.length) {
@@ -134,7 +141,7 @@ export function matchText(text: string, index: AliasIndex): Map<string, number> 
                 continue;
             }
 
-            mentions.set(entry.keywordId, (mentions.get(entry.keywordId) ?? 0) + 1);
+            mentions.push({ keywordId: entry.keywordId, start: position, size });
             consumed = size;
             break;
         }
@@ -143,6 +150,15 @@ export function matchText(text: string, index: AliasIndex): Map<string, number> 
     }
 
     return mentions;
+}
+
+/** Keywords del diccionario mencionadas en un texto, con la cantidad de menciones de cada una. */
+export function matchText(text: string, index: AliasIndex): Map<string, number> {
+    const counts = new Map<string, number>();
+    for (const mention of findMentions(tokenizeText(text), index)) {
+        counts.set(mention.keywordId, (counts.get(mention.keywordId) ?? 0) + 1);
+    }
+    return counts;
 }
 
 export interface TextIndex {

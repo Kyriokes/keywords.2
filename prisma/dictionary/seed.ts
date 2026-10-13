@@ -1,4 +1,5 @@
-// Carga la semilla del diccionario (tech.json) en la base indicada por DATABASE_URL.
+// Carga las semillas del diccionario (keywords: tech.json; roles: roles.json) en la base
+// indicada por DATABASE_URL.
 // Se puede correr todas las veces que haga falta: no pisa lo que ya editó un admin.
 //
 //   pnpm dictionary:seed             aplica los cambios
@@ -6,14 +7,16 @@
 import { PrismaClient } from "@prisma/client";
 import { mergeKeywordInto } from "../../src/lib/keywords/merge";
 import { describeTarget } from "./target";
+import { findRoleProblems, loadRoles } from "./roles-data";
 import { findSeedProblems, loadSeed } from "./seed-data";
+import { seedRoles } from "./seed-roles";
 
 const dryRun = process.argv.includes("--dry-run");
 const prisma = new PrismaClient();
 
 async function main() {
     const seed = loadSeed();
-    const problems = findSeedProblems(seed);
+    const problems = [...findSeedProblems(seed), ...findRoleProblems(loadRoles())];
     if (problems.length > 0) {
         console.error("La semilla tiene errores:\n- " + problems.join("\n- "));
         process.exit(1);
@@ -136,6 +139,8 @@ async function main() {
     if (conflicts.length > 0) {
         console.log(`Conflictos (${conflicts.length}), no se modificaron:\n- ${conflicts.join("\n- ")}`);
     }
+    await seedRoles(prisma, dryRun);
+
     console.log(dryRun ? "Simulación terminada: no se escribió nada." : "Listo.");
 }
 

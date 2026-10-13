@@ -155,6 +155,7 @@ model JobApplication {
   // NUEVO: Enlace al diccionario global de puestos (Capa 3)
   canonicalPositionId String?
   canonicalPosition   CanonicalPosition? @relation(fields: [canonicalPositionId], references: [id], onDelete: SetNull)
+  seniority           String? // Nivel detectado en el título; valores en src/lib/positions/rules.ts
 
   // CV utilizado para esta aplicación
   cvId String?

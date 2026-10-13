@@ -10,6 +10,7 @@ import prisma from "@/lib/prisma";
 import { providerManager } from "./providerManager";
 import { isProviderId } from "./providers/ids";
 import { standardizeOfferKeywords } from "@/lib/keywords/dictionary";
+import { classifyJobTitle } from "@/lib/positions/dictionary";
 import { checkAndConsumeQuota, refundQuota } from "@/lib/quota.service";
 import { LIMITS } from "@/lib/validation";
 
@@ -83,6 +84,11 @@ export async function processJobApplication(
                 jobDescription,
                 LIMITS.applicationKeywords
             );
+            if (data.puesto) {
+                const classified = await classifyJobTitle(data.puesto);
+                data.rol = classified.roleName ?? undefined;
+                data.seniority = classified.seniority ?? undefined;
+            }
         } catch (e) {
             console.error("Error standardizing keywords:", e);
         }

@@ -1,0 +1,60 @@
+{
+  "sector": "Tecnología / IT",
+  "roles": [
+    { "name": "Software Developer", "aliases": ["software engineer", "ingeniero de software", "ingeniera de software", "ingeniero en software", "desarrollador de software", "desarrolladora de software", "analista programador", "analista programadora", "programador", "programadora", "programmer", "developer", "desarrollador", "desarrolladora", "dev", "swe", "sde", "software development engineer"] },
+    { "name": "Frontend Developer", "aliases": ["frontend", "front end", "maquetador", "maquetadora", "ui developer", "ui engineer"] },
+    { "name": "Backend Developer", "aliases": ["backend", "back end"] },
+    { "name": "Full Stack Developer", "aliases": ["full stack", "fullstack"] },
+    { "name": "Web Developer", "aliases": ["web developer", "desarrollador web", "desarrolladora web", "programador web", "programadora web", "web engineer", "webmaster", "desarrollo web"] },
+    { "name": "Mobile Developer", "aliases": ["mobile", "móvil", "apps móviles", "aplicaciones móviles"] },
+    { "name": "Game Developer", "aliases": ["game developer", "game programmer", "gameplay programmer", "videojuegos", "game dev"] },
+    { "name": "Embedded Developer", "aliases": ["embedded", "firmware", "sistemas embebidos", "embebidos"] },
+    { "name": "Blockchain Developer", "aliases": ["blockchain", "smart contracts", "smart contract", "web3"] },
+    { "name": "Integration Developer", "aliases": ["integration developer", "integration engineer", "integraciones", "middleware", "mulesoft"] },
+    { "name": "Mainframe Developer", "aliases": ["mainframe", "cobol"] },
+    { "name": "Salesforce Developer", "aliases": ["salesforce"] },
+    { "name": "SAP Consultant", "aliases": ["sap", "abap"] },
+    { "name": "ERP Consultant", "aliases": ["erp", "odoo", "dynamics 365", "netsuite"] },
+    { "name": "WordPress Developer", "aliases": ["wordpress"] },
+    { "name": "RPA Developer", "aliases": ["rpa", "uipath", "automation anywhere", "blue prism", "power platform", "power apps", "low code"] },
+
+    { "name": "QA Automation", "aliases": ["qa automation", "automation qa", "test automation", "automation testing", "automation tester", "automatizador", "automatizadora", "qa automatizador", "sdet", "automatización de pruebas", "pruebas automatizadas", "software engineer in test", "testing automatizado"] },
+    { "name": "QA Analyst", "aliases": ["qa", "quality assurance", "tester", "testing", "qc", "test engineer", "calidad de software"] },
+
+    { "name": "Data Analyst", "aliases": ["data analyst", "analista de datos", "analista de data", "data analytics", "analista de información"] },
+    { "name": "Data Scientist", "aliases": ["data scientist", "científico de datos", "científica de datos", "data science", "ciencia de datos"] },
+    { "name": "Data Engineer", "aliases": ["data engineer", "ingeniero de datos", "ingeniera de datos", "data engineering", "ingeniería de datos", "analytics engineer", "big data engineer"] },
+    { "name": "Data Architect", "aliases": ["data architect", "arquitecto de datos", "arquitecta de datos"] },
+    { "name": "BI Analyst", "aliases": ["bi", "business intelligence", "inteligencia de negocios"] },
+    { "name": "AI/ML Engineer", "aliases": ["machine learning engineer", "ml engineer", "ai engineer", "mlops", "inteligencia artificial", "prompt engineer", "llm engineer", "genai engineer"] },
+    { "name": "Database Administrator", "aliases": ["dba", "database administrator", "administrador de bases de datos", "administradora de bases de datos", "administrador de base de datos", "database developer", "database engineer", "sql developer", "desarrollador sql"] },
+
+    { "name": "DevOps Engineer", "aliases": ["devops", "dev ops", "platform engineer", "ingeniero de plataforma", "release engineer", "build engineer"] },
+    { "name": "SRE", "aliases": ["sre", "site reliability"] },
+    { "name": "Cloud Engineer", "aliases": ["cloud", "cloud architect", "arquitecto cloud", "arquitecta cloud", "nube"] },
+    { "name": "SysAdmin", "aliases": ["sysadmin", "system administrator", "systems administrator", "administrador de sistemas", "administradora de sistemas", "administrador de servidores", "administrador linux", "linux administrator", "infraestructura", "infrastructure", "it administrator", "administrador it"] },
+    { "name": "Network Engineer", "aliases": ["network engineer", "network administrator", "ingeniero de redes", "administrador de redes", "networking", "redes", "noc", "telecomunicaciones"] },
+    { "name": "Security Engineer", "aliases": ["security", "ciberseguridad", "cybersecurity", "cyber security", "seguridad informática", "seguridad de la información", "infosec", "pentester", "pentesting", "ethical hacker", "soc", "appsec", "devsecops"] },
+    { "name": "IT Support", "aliases": ["help desk", "helpdesk", "soporte", "it support", "technical support", "mesa de ayuda", "service desk", "desktop support", "field service"] },
+
+    { "name": "UX/UI Designer", "aliases": ["ux", "ui", "ux/ui", "ui/ux", "product designer", "diseñador de producto", "diseñadora de producto", "interaction designer", "ux researcher", "diseño de producto"] },
+    { "name": "Product Manager", "aliases": ["product manager", "gerente de producto", "product management", "product lead", "head of product"] },
+    { "name": "Product Owner", "aliases": ["product owner", "dueño de producto", "dueña de producto"] },
+    { "name": "Project Manager", "aliases": ["project manager", "jefe de proyecto", "jefa de proyecto", "jefe de proyectos", "líder de proyecto", "líder de proyectos", "gerente de proyecto", "gerente de proyectos", "project leader", "pmo", "project management", "coordinador de proyectos", "coordinadora de proyectos", "delivery manager"] },
+    { "name": "Scrum Master", "aliases": ["scrum master", "agile coach", "scrum", "agile master", "facilitador ágil", "facilitadora ágil"] },
+    { "name": "Business Analyst", "aliases": ["business analyst", "analista de negocio", "analista de negocios", "analista de procesos", "process analyst"] },
+    { "name": "Functional Analyst", "aliases": ["analista funcional", "functional analyst", "consultor funcional", "consultora funcional", "analista de requerimientos", "analista de sistemas", "systems analyst", "system analyst", "analista técnico funcional"] },
+    { "name": "Technical Writer", "aliases": ["technical writer", "redactor técnico", "redactora técnica", "documentador", "documentadora"] },
+
+    { "name": "Tech Lead", "aliases": ["tech lead", "technical lead", "líder técnico", "líder técnica", "team lead", "team leader", "líder de equipo", "lead developer", "líder de desarrollo", "referente técnico", "líder de tecnología"] },
+    { "name": "Engineering Manager", "aliases": ["engineering manager", "gerente de ingeniería", "head of engineering", "gerente de desarrollo", "development manager", "gerente de sistemas", "it manager", "gerente de tecnología", "gerente it", "cto", "cio", "director de tecnología", "directora de tecnología", "vp of engineering", "jefe de sistemas", "jefe de desarrollo", "director de sistemas", "head of technology", "it director"] },
+    { "name": "Software Architect", "aliases": ["architect", "arquitecto", "arquitecta", "software architect", "arquitecto de software", "arquitecta de software", "solutions architect", "solution architect", "arquitecto de soluciones", "arquitecta de soluciones", "enterprise architect", "technical architect"] },
+
+    { "name": "Solutions Engineer", "aliases": ["solutions engineer", "sales engineer", "preventa", "pre sales", "presales", "solutions consultant"] },
+    { "name": "Implementation Consultant", "aliases": ["implementador", "implementadora", "implementation consultant", "implementation specialist", "consultor de implementación", "consultora de implementación", "onboarding specialist"] },
+    { "name": "IT Consultant", "aliases": ["it consultant", "consultor it", "consultora it", "consultor de sistemas", "consultor tecnológico", "technology consultant", "consultor informático"] },
+    { "name": "IT Recruiter", "aliases": ["it recruiter", "technical recruiter", "recruiter it", "reclutador it", "reclutadora it", "talent acquisition", "sourcer"] },
+
+    { "name": "Otros", "aliases": [] }
+  ]
+}

@@ -129,6 +129,8 @@ export default function AddJobPage() {
                     jobDescription: rawText,
                     detectedWords: aiResponse.palabrasClave.map(k => k.nombre),
                     positionId: undefined,
+                    role: aiResponse.rol,
+                    seniority: aiResponse.seniority,
                     link: link.trim()
                 },
                 unverifiedWords: aiResponse.palabrasClave.filter(k => k.verificada === false).map(k => k.nombre),

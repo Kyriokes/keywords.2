@@ -8,9 +8,11 @@
 //   2. Keywords sin verificar que quedaron sin ningún vínculo: se borran.
 //   3. Keywords de postulaciones sin alias: se fusionan con la entrada que tiene su clave,
 //      o se les crea el alias para que las próximas variantes caigan en la misma.
+//   4. Postulaciones sin rol: se clasifica su título con el diccionario de roles.
 import { PrismaClient } from "@prisma/client";
 import { matchText, type AliasIndex } from "../../src/lib/keywords/core";
 import { mergeKeywordInto } from "../../src/lib/keywords/merge";
+import { buildRoleDictionary, classifyTitle } from "../../src/lib/positions/classify";
 import { planKeywordBackfill } from "./backfill-plan";
 import { describeTarget } from "./target";
 
@@ -114,6 +116,70 @@ async function main() {
         });
         for (const step of mergeSteps) {
             await prisma.$transaction((tx) => mergeKeywordInto(tx, step.sourceId, step.targetId));
+        }
+    }
+
+    // ── 4. Roles de las postulaciones ───────────────────────────────────────
+    const roles = await prisma.canonicalPosition.findMany({
+        where: { isActive: true },
+        select: { id: true, name: true, aliases: { select: { aliasText: true } } },
+    });
+    if (roles.length === 0) {
+        console.log("4. Roles: no hay roles cargados; corré primero dictionary:seed.");
+    } else {
+        const roleDictionary = buildRoleDictionary(roles.map((role) => ({
+            id: role.id,
+            name: role.name,
+            aliasKeys: role.aliases.map((alias) => alias.aliasText),
+        })));
+
+        const applications = await prisma.jobApplication.findMany({
+            select: { id: true, jobTitle: true, canonicalPositionId: true },
+        });
+
+        // Solo se completan las que no tienen rol: lo que ya asignó un admin no se toca
+        const idsByTarget = new Map<string, { roleId: string; seniority: string | null; ids: string[] }>();
+        const unclassified = new Map<string, number>();
+        let alreadyClassified = 0;
+        let newlyClassified = 0;
+
+        for (const application of applications) {
+            if (application.canonicalPositionId) {
+                alreadyClassified++;
+                continue;
+            }
+            const { roleId, seniority, core } = classifyTitle(application.jobTitle, roleDictionary);
+            if (!roleId) {
+                const key = core || application.jobTitle;
+                unclassified.set(key, (unclassified.get(key) ?? 0) + 1);
+                continue;
+            }
+            newlyClassified++;
+            const target = idsByTarget.get(`${roleId}|${seniority}`) ?? { roleId, seniority, ids: [] };
+            target.ids.push(application.id);
+            idsByTarget.set(`${roleId}|${seniority}`, target);
+        }
+
+        const classified = alreadyClassified + newlyClassified;
+        const share = applications.length > 0 ? Math.round((classified / applications.length) * 100) : 0;
+        console.log(`4. Roles: ${classified} de ${applications.length} postulaciones quedan con rol (${share}%); ` +
+            `${newlyClassified} se clasifican ahora y ${alreadyClassified} ya lo tenían.`);
+
+        if (unclassified.size > 0) {
+            console.log(`   Títulos sin rol (${unclassified.size} distintos), para asignar en /admin → Puestos:`);
+            const top = Array.from(unclassified).sort((a, b) => b[1] - a[1]).slice(0, 30);
+            for (const [core, count] of top) {
+                console.log(`  ${String(count).padStart(4)}  ${core}`);
+            }
+        }
+
+        if (apply) {
+            for (const { roleId, seniority, ids } of idsByTarget.values()) {
+                await prisma.jobApplication.updateMany({
+                    where: { id: { in: ids }, canonicalPositionId: null },
+                    data: { canonicalPositionId: roleId, seniority },
+                });
+            }
         }
     }
 
