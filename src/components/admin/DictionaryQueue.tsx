@@ -131,6 +131,7 @@ function PendingRow({ keyword, onResolve }: PendingRowProps) {
 
   // Las sugerencias automáticas primero; debajo, lo que el admin busque a mano
   const targets = query.trim() ? results : keyword.suggestions;
+  const { sameAs } = keyword;
 
   return (
     <li className="grid gap-3 py-4 lg:grid-cols-[minmax(0,14rem)_minmax(0,1fr)_minmax(0,1fr)_auto] lg:items-start">
@@ -141,45 +142,58 @@ function PendingRow({ keyword, onResolve }: PendingRowProps) {
         </p>
       </div>
 
-      <div className="flex flex-wrap items-center gap-2">
-        <Input
-          value={displayName}
-          onChange={(event) => setDisplayName(event.target.value)}
-          aria-label={`Nombre visible de ${keyword.name}`}
-          className="h-8 w-40"
-          disabled={busy}
-        />
-        <Select value={category} onValueChange={(value) => setCategory(value as KeywordCategory)} disabled={busy}>
-          <SelectTrigger className="h-8 w-44" aria-label={`Categoría de ${keyword.name}`}>
-            <SelectValue placeholder="Categoría" />
-          </SelectTrigger>
-          <SelectContent>
-            {KEYWORD_CATEGORIES.map((item) => (
-              <SelectItem key={item} value={item}>
-                {CATEGORY_LABELS[item]}
-              </SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
-        <Button
-          type="button"
-          size="sm"
-          disabled={busy || !category || !displayName.trim()}
-          onClick={() => category && run(
-            approveKeyword({ id: keyword.id, displayName, category }),
-            `${displayName.trim()} se agregó al diccionario`
-          )}
-        >
-          Aprobar
-        </Button>
-      </div>
+      {sameAs ? (
+        // El diccionario ya tiene este término como alias: aprobarlo crearía un duplicado
+        <div className="flex flex-wrap items-center gap-x-3 gap-y-2">
+          <p className="text-sm text-muted-foreground">
+            Ya está en el diccionario como{" "}
+            <span className="font-medium text-foreground">{sameAs.name}</span>
+          </p>
+          <Button type="button" size="sm" disabled={busy} onClick={() => merge(sameAs)}>
+            Fusionar
+          </Button>
+        </div>
+      ) : (
+        <div className="flex flex-wrap items-center gap-2">
+          <Input
+            value={displayName}
+            onChange={(event) => setDisplayName(event.target.value)}
+            aria-label={`Nombre visible de ${keyword.name}`}
+            className="h-8 w-40"
+            disabled={busy}
+          />
+          <Select value={category} onValueChange={(value) => setCategory(value as KeywordCategory)} disabled={busy}>
+            <SelectTrigger className="h-8 w-44" aria-label={`Categoría de ${keyword.name}`}>
+              <SelectValue placeholder="Categoría" />
+            </SelectTrigger>
+            <SelectContent>
+              {KEYWORD_CATEGORIES.map((item) => (
+                <SelectItem key={item} value={item}>
+                  {CATEGORY_LABELS[item]}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+          <Button
+            type="button"
+            size="sm"
+            disabled={busy || !category || !displayName.trim()}
+            onClick={() => category && run(
+              approveKeyword({ id: keyword.id, displayName, category }),
+              `${displayName.trim()} se agregó al diccionario`
+            )}
+          >
+            Aprobar
+          </Button>
+        </div>
+      )}
 
       <div className="space-y-2">
         <Input
           type="search"
           value={query}
           onChange={(event) => search(event.target.value)}
-          placeholder="Fusionar con…"
+          placeholder={sameAs ? "Fusionar con otra…" : "Fusionar con…"}
           aria-label={`Buscar una entrada para fusionar ${keyword.name}`}
           className="h-8 w-full sm:w-56"
           disabled={busy}

@@ -4,14 +4,14 @@ import fuzzysort from "fuzzysort"
 import { z } from "zod"
 import prisma from "@/lib/prisma"
 import { isAdminSession } from "@/lib/auth-guards"
-import { aliasKey, matchText } from "@/lib/keywords/core"
+import { aliasKey } from "@/lib/keywords/core"
 import { KEYWORD_CATEGORIES } from "@/lib/keywords/categories"
 import { getDictionary, invalidateDictionary, keywordName } from "@/lib/keywords/dictionary"
 import { mergeKeywordInto } from "@/lib/keywords/merge"
+import { suggestMergeTargets } from "@/lib/keywords/suggest"
 import { LIMITS, firstIssueMessage, type ActionResult } from "@/lib/validation"
 
 const QUEUE_SIZE = 50
-const MAX_SUGGESTIONS = 3
 
 export interface DictionaryTarget {
   id: string
@@ -23,7 +23,9 @@ export interface PendingKeyword {
   name: string
   /** Postulaciones que la piden, sumando las de todos los usuarios. */
   applications: number
-  /** Entradas del diccionario a las que podría corresponder. */
+  /** Entrada del diccionario que ya tiene este término como alias; solo queda fusionarlos. */
+  sameAs: DictionaryTarget | null
+  /** Otras entradas del diccionario a las que podría corresponder. */
   suggestions: DictionaryTarget[]
 }
 
@@ -63,32 +65,21 @@ export async function getDictionaryQueue(): Promise<DictionaryQueue> {
     getDictionary()
   ])
 
-  const targets = Array.from(dictionary.keywords.values())
-
   return {
     pending: pending.map((keyword) => {
       const name = keywordName(keyword)
-
-      // Primero las entradas contenidas en el término ("experiencia en React" → React);
-      // después las parecidas por escritura ("kubernets" → Kubernetes).
-      const contained = Array.from(matchText(name, dictionary.index).keys())
-        .flatMap((id) => dictionary.keywords.get(id) ?? [])
-      const similar = fuzzysort.go(name, targets, { key: "name", limit: MAX_SUGGESTIONS }).map((result) => result.obj)
-
-      const suggestions = new Map<string, DictionaryTarget>()
-      for (const target of [...contained, ...similar]) {
-        if (suggestions.size < MAX_SUGGESTIONS) suggestions.set(target.id, { id: target.id, name: target.name })
-      }
+      const { sameAs, similar } = suggestMergeTargets(name, dictionary)
 
       return {
         id: keyword.id,
         name,
         applications: keyword._count.jobApplications,
-        suggestions: Array.from(suggestions.values())
+        sameAs,
+        suggestions: similar
       }
     }),
     pendingTotal,
-    dictionarySize: targets.length,
+    dictionarySize: dictionary.keywords.size,
     verifiedShare: mentions > 0 ? Math.round((verifiedMentions / mentions) * 100) : null
   }
 }
