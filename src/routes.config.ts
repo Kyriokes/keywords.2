@@ -10,6 +10,7 @@ export const publicRoutes = [
   "/login",
   "/login/oauth-error",
   "/api/auth", // Rutas internas de NextAuth
+  "/opengraph-image", // Imagen para compartir: la piden las redes, sin sesión
 ];
 
 /**

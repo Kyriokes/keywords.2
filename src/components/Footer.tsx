@@ -1,9 +1,9 @@
 export function Footer() {
     return (
-        <footer className="mt-10 border-t bg-background">
+        <footer className="border-t bg-background">
             <div className="container mx-auto space-y-3 px-4 py-6 text-center text-sm text-muted-foreground">
                 <p>
-                    KeyWords · Organizá tus postulaciones y descubrí qué mejorar.
+                    KeyWords. Sabé qué piden las ofertas y cuánto de eso ya tenés.
                 </p>
 
                 <p>
