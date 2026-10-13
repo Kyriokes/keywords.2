@@ -1,0 +1,38 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+# Un push nuevo sobre la misma rama cancela la corrida anterior
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+
+      - run: pnpm install --frozen-lockfile
+
+      # Genera los tipos de Prisma que usa el chequeo de tipos; no se conecta a ninguna base
+      - run: pnpm exec prisma generate
+
+      - run: pnpm test
+      - run: pnpm exec tsc --noEmit
+      - run: pnpm exec eslint
