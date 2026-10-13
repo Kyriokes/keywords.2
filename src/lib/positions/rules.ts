@@ -32,6 +32,8 @@ export const GENERIC_ROLE = "Software Developer";
 export const FRONTEND_ROLE = "Frontend Developer";
 export const BACKEND_ROLE = "Backend Developer";
 export const FULL_STACK_ROLE = "Full Stack Developer";
+/** Rol amplio: "web" acompaña a muchos puestos, así que cede ante cualquier rol más preciso del mismo título. */
+export const WEB_ROLE = "Web Developer";
 /** Destino manual para títulos que no corresponden a ningún rol del diccionario. */
 export const OTHER_ROLE = "Otros";
 

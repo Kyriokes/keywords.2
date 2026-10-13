@@ -28,6 +28,13 @@ describe("classifyTitle", () => {
         ["Full Stack Developer (React + Node)", "Full Stack Developer", null],
         ["Fullstack Engineer Ssr", "Full Stack Developer", "SEMI_SENIOR"],
         ["Programador Web Junior", "Web Developer", "JUNIOR"],
+        // "Web" acompaña a un rol más preciso: gana el preciso
+        ["Desarrollador/a Web Full Stack", "Full Stack Developer", null],
+        ["Programador Web Fullstack Jr", "Full Stack Developer", "JUNIOR"],
+        ["Desarrollador Web Backend", "Backend Developer", null],
+        ["Web Developer Frontend", "Frontend Developer", null],
+        // Una tecnología sola no le gana al rol web nombrado en el título
+        ["Programador Web PHP", "Web Developer", null],
         ["Desarrollador Mobile", "Mobile Developer", null],
 
         // Sin frase de rol: decide la tecnología

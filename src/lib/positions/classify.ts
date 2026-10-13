@@ -9,6 +9,7 @@ import {
     SENIORITY_TERMS,
     TECH_HINTS,
     TITLE_NOISE,
+    WEB_ROLE,
     type Seniority,
 } from "./rules";
 
@@ -29,6 +30,8 @@ export interface RoleDictionary {
     frontendRoleId: string | null;
     backendRoleId: string | null;
     fullStackRoleId: string | null;
+    /** Rol amplio de desarrollo web: solo aplica si el título no nombra uno más preciso. */
+    webRoleId: string | null;
 }
 
 export interface TitleClassification {
@@ -64,6 +67,7 @@ export function buildRoleDictionary(roles: RoleSource[]): RoleDictionary {
         frontendRoleId: idByName.get(FRONTEND_ROLE) ?? null,
         backendRoleId: idByName.get(BACKEND_ROLE) ?? null,
         fullStackRoleId: idByName.get(FULL_STACK_ROLE) ?? null,
+        webRoleId: idByName.get(WEB_ROLE) ?? null,
     };
 }
 
@@ -116,18 +120,25 @@ function pickRole(mentions: Mention[], dictionary: RoleDictionary): Mention | nu
 /**
  * Deduce el rol y el seniority de un título de oferta.
  *
- * Orden: una frase de rol específica; si no hay, una tecnología que delate el rol;
+ * Orden: una frase de rol específica; si no hay, el rol amplio de desarrollo web;
+ * si no hay, una tecnología que delate el rol;
  * si no hay, el rol genérico de desarrollo; si tampoco, queda sin clasificar.
  */
 export function classifyTitle(title: string, dictionary: RoleDictionary): TitleClassification {
     const tokens = tokenizeText(title);
 
     const roleMentions = allMentions(tokens, dictionary.index);
-    const specific = roleMentions.filter((mention) => mention.keywordId !== dictionary.genericRoleId);
     const generic = roleMentions.filter((mention) => mention.keywordId === dictionary.genericRoleId);
+    // "Desarrollador Web Full Stack" es full stack y "Desarrollador Web Backend" es backend:
+    // el rol web solo decide cuando el título no nombra ninguno más preciso
+    const web = roleMentions.filter((mention) => mention.keywordId === dictionary.webRoleId);
+    const specific = roleMentions.filter(
+        (mention) => mention.keywordId !== dictionary.genericRoleId && mention.keywordId !== dictionary.webRoleId
+    );
 
     const role =
         pickRole(specific, dictionary) ??
+        mostSpecific(web) ??
         pickRole(allMentions(tokens, dictionary.hints), dictionary) ??
         mostSpecific(generic);
 

@@ -8,6 +8,7 @@ import {
     GENERIC_ROLE,
     OTHER_ROLE,
     TECH_HINTS,
+    WEB_ROLE,
 } from "../../src/lib/positions/rules";
 
 export interface SeedRole {
@@ -38,7 +39,7 @@ export function findRoleProblems(roles: SeedRole[]): string[] {
 
     if (names.size !== roles.length) problems.push("hay nombres de rol repetidos");
 
-    for (const required of [GENERIC_ROLE, FRONTEND_ROLE, BACKEND_ROLE, FULL_STACK_ROLE, OTHER_ROLE, ...Object.keys(TECH_HINTS)]) {
+    for (const required of [GENERIC_ROLE, FRONTEND_ROLE, BACKEND_ROLE, FULL_STACK_ROLE, WEB_ROLE, OTHER_ROLE, ...Object.keys(TECH_HINTS)]) {
         if (!names.has(required)) problems.push(`falta el rol "${required}", que las reglas usan por nombre`);
     }
 
