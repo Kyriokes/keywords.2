@@ -11,8 +11,9 @@ import { Label } from "@/components/ui/label";
 import { processJobApplication } from "@/lib/ia/controller";
 import { getMyQuotaStatus } from "@/actions/quota-actions";
 import { toast } from "sonner";
-import { Loader2 } from "lucide-react";
-import { getKeywordStats } from "@/lib/stats/keywordAnalysis";
+import { Check, Loader2, Minus } from "lucide-react";
+import { summarizeKeywords } from "@/lib/stats/keywordAnalysis";
+import { useKeywordInsights } from "@/lib/stats/useKeywordInsights";
 
 interface QuotaStatus {
     used: number;
@@ -53,11 +54,15 @@ export default function AddJobPage() {
         cvs.find(c => c.isPrimary) || cvs[0] || null,
     [cvs]);
 
-    const cvKeywords = activeCv?.keywords || [];
+    const { insights } = useKeywordInsights(activeCv?.id, applications.length);
 
     const keywordStats = useMemo(
-        () => getKeywordStats(applications, cvKeywords),
-        [applications, cvKeywords]
+        () => summarizeKeywords({
+            keywords: insights?.keywords ?? [],
+            byApplication: insights?.byApplication ?? {},
+            applicationIds: applications.map(app => app.id),
+        }).stats,
+        [insights, applications]
     );
 
     const matched = useMemo(
@@ -126,6 +131,7 @@ export default function AddJobPage() {
                     positionId: undefined,
                     link: link.trim()
                 },
+                unverifiedWords: aiResponse.palabrasClave.filter(k => k.verificada === false).map(k => k.nombre),
                 providerUsed: provider,
                 excludedProviders: []
             });
@@ -241,13 +247,14 @@ export default function AddJobPage() {
                         ) : (
                             <div className="space-y-4">
                                 <div className="space-y-2">
-                                    <h3 className="text-sm font-semibold text-green-600">Ya tenés</h3>
+                                    <h3 className="text-sm font-semibold">Ya tenés</h3>
                                     {matched.length > 0 ? (
                                         <div className="space-y-1">
                                             {matched.map((item) => (
-                                                <p key={item.normalizedName} className="text-green-600">
-                                                    <span className="font-semibold">+ {item.name}</span>
-                                                    <span className="ml-1 text-xs opacity-80">({item.value})</span>
+                                                <p key={item.id} className="flex items-center gap-2 text-sm">
+                                                    <Check className="size-4 shrink-0 text-skill-have" aria-hidden />
+                                                    <span className="truncate font-medium">{item.name}</span>
+                                                    <span className="text-xs text-muted-foreground">({item.demand})</span>
                                                 </p>
                                             ))}
                                         </div>
@@ -256,13 +263,14 @@ export default function AddJobPage() {
                                     )}
                                 </div>
                                 <div className="space-y-2">
-                                    <h3 className="text-sm font-semibold text-red-600">Te está faltando</h3>
+                                    <h3 className="text-sm font-semibold">Te está faltando</h3>
                                     {missing.length > 0 ? (
                                         <div className="space-y-1">
                                             {missing.map((item) => (
-                                                <p key={item.normalizedName} className="text-red-600">
-                                                    <span className="font-semibold">- {item.name}</span>
-                                                    <span className="ml-1 text-xs opacity-80">({item.value})</span>
+                                                <p key={item.id} className="flex items-center gap-2 text-sm">
+                                                    <Minus className="size-4 shrink-0 text-skill-gap" aria-hidden />
+                                                    <span className="truncate font-medium">{item.name}</span>
+                                                    <span className="text-xs text-muted-foreground">({item.demand})</span>
                                                 </p>
                                             ))}
                                         </div>
