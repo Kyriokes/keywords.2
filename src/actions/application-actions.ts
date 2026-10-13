@@ -17,6 +17,8 @@ export interface CreateApplicationData {
   detectedWords: string[]
   positionTitle?: string
   provider?: string
+  /** El usuario ya revisó `detectedWords`: se guarda esa lista tal cual, sin sumarle nada. */
+  reviewed?: boolean
 }
 
 const VALID_APPLICATION_STATUSES = ["APPLIED", "INTERVIEW", "SAVED", "REJECTED"] as const
@@ -114,9 +116,10 @@ export async function createApplication(
       }
   })
 
-  // Keywords: los términos recibidos pasan por el diccionario y se suman los que
-  // el diccionario detecta en la descripción (por ejemplo, en postulaciones importadas)
-  const detected = await detectKeywords(input.jobDescription)
+  // Keywords: los términos recibidos pasan por el diccionario. Si la lista no fue revisada
+  // (postulaciones importadas) se suman los que el diccionario detecta en la descripción;
+  // si fue revisada no, porque volvería a agregar lo que el usuario quitó.
+  const detected = input.reviewed ? [] : await detectKeywords(input.jobDescription)
   const keywordIds = Array.from(
     new Set([...(await resolveTerms(input.detectedWords)), ...detected.map((k) => k.id)])
   ).slice(0, LIMITS.applicationKeywords)

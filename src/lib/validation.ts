@@ -89,6 +89,7 @@ export const createApplicationSchema = z.object({
     detectedWords: z.unknown().transform((value) => sanitizeTerms(value, LIMITS.applicationKeywords)),
     positionTitle: title.optional(),
     provider: z.string().optional(),
+    reviewed: z.boolean().optional(),
 });
 
 export const uploadCvSchema = z.object({

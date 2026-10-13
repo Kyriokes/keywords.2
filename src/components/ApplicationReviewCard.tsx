@@ -27,7 +27,8 @@ export function ApplicationReviewCard() {
             await addApplication({
                 ...data,
                 positionId: data.positionId || data.jobTitle, // Use jobTitle as positionId/Title if not set
-                provider: providerUsed
+                provider: providerUsed,
+                reviewed: true
             });
         } catch (e) {
             // El resultado queda abierto para que el usuario pueda cancelar o reintentar
@@ -111,6 +112,13 @@ export function ApplicationReviewCard() {
         }
     };
 
+    const removeWord = (word: string) => {
+        setPendingApplication({
+            ...pendingApplication,
+            data: { ...data, detectedWords: data.detectedWords.filter((item) => item !== word) },
+        });
+    };
+
     const handleCancel = () => {
         if (confirm("¿Estás seguro de cancelar? Se perderán los datos procesados.")) {
             setPendingApplication(null);
@@ -157,29 +165,34 @@ export function ApplicationReviewCard() {
                 {/* Keywords */}
                 <div>
                     <h3 className="text-sm font-medium text-muted-foreground mb-2">Palabras Clave Detectadas ({data.detectedWords.length})</h3>
-                    {unverifiedWords.size > 0 && (
-                        <p className="text-xs text-muted-foreground mb-2">
-                            Las de borde punteado todavía no están en el diccionario: se guardan igual, sin verificar.
-                        </p>
-                    )}
+                    <p className="text-xs text-muted-foreground mb-2">
+                        Quitá las que no correspondan antes de guardar.
+                        {unverifiedWords.size > 0 && " Las de borde punteado todavía no están en el diccionario: se guardan igual, sin verificar."}
+                    </p>
                     <div className="flex flex-wrap gap-2">
                         {data.detectedWords.length > 0 ? (
-                            data.detectedWords.map((word, i) => (
-                                unverifiedWords.has(word) ? (
+                            data.detectedWords.map((word, i) => {
+                                const unverified = unverifiedWords.has(word);
+                                return (
                                     <Badge
-                                        key={i}
-                                        variant="outline"
-                                        className="border-dashed px-3 py-1 text-sm font-normal text-muted-foreground"
-                                        title="Todavía no está en el diccionario"
+                                        key={`${word}-${i}`}
+                                        variant={unverified ? "outline" : "secondary"}
+                                        className={`gap-1 py-1 pl-3 pr-1 text-sm ${unverified ? "border-dashed font-normal text-muted-foreground" : ""}`}
+                                        title={unverified ? "Todavía no está en el diccionario" : undefined}
                                     >
                                         {word}
+                                        <button
+                                            type="button"
+                                            onClick={() => removeWord(word)}
+                                            disabled={isRetrying}
+                                            aria-label={`Quitar ${word}`}
+                                            className="rounded-full p-0.5 hover:bg-foreground/10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:opacity-50"
+                                        >
+                                            <X className="h-3 w-3" aria-hidden />
+                                        </button>
                                     </Badge>
-                                ) : (
-                                    <Badge key={i} variant="secondary" className="px-3 py-1 text-sm">
-                                        {word}
-                                    </Badge>
-                                )
-                            ))
+                                );
+                            })
                         ) : (
                             <div className="flex items-center gap-2 text-yellow-600 bg-yellow-500/10 p-2 rounded text-sm">
                                 <AlertTriangle className="h-4 w-4" />

@@ -35,7 +35,7 @@ interface ApplicationState {
 
   // Actions
   fetchApplications: () => Promise<void>;
-  addApplication: (appData: Omit<JobApplication, 'id' | 'date' | 'detectedWords' | 'status'> & { detectedWords?: string[], provider?: string }) => Promise<void>;
+  addApplication: (appData: Omit<JobApplication, 'id' | 'date' | 'detectedWords' | 'status'> & { detectedWords?: string[], provider?: string, reviewed?: boolean }) => Promise<void>;
   removeApplication: (id: string) => Promise<void>;
   clearAllApplications: () => Promise<void>;
   updateApplicationStatus: (id: string, status: ApplicationStatus) => Promise<void>;
@@ -79,7 +79,8 @@ export const useApplicationStore = create<ApplicationState>((set, get) => ({
           link: appData.link,
           detectedWords: appData.detectedWords || [],
           positionTitle: appData.positionId,
-          provider: appData.provider
+          provider: appData.provider,
+          reviewed: appData.reviewed
       });
 
       // Los errores esperados llegan como valor: se relanzan acá con un mensaje para el usuario
