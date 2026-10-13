@@ -27,6 +27,8 @@ interface ApplicationState {
   applications: JobApplication[];
   pendingApplication: PendingApplication | null;
   isLoading: boolean;
+  /** La última carga falló: una lista vacía no significa que no haya postulaciones. */
+  loadFailed: boolean;
 
   // Actions
   fetchApplications: () => Promise<void>;
@@ -41,14 +43,16 @@ export const useApplicationStore = create<ApplicationState>((set, get) => ({
   applications: [],
   pendingApplication: null,
   isLoading: false,
+  loadFailed: false,
 
   fetchApplications: async () => {
     set({ isLoading: true });
     try {
       const apps = await getApplications();
-      set({ applications: apps });
+      set({ applications: apps, loadFailed: false });
     } catch (error) {
       console.error('Failed to fetch applications:', error);
+      set({ loadFailed: true });
     } finally {
       set({ isLoading: false });
     }

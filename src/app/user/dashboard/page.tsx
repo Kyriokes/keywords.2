@@ -7,9 +7,10 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { useEffect } from "react";
 import { ApplicationsTable } from "@/components/ApplicationsTable";
 import { StatsView } from "@/components/StatsView";
+import { Button } from "@/components/ui/button";
 
 export default function DashboardPage() {
-    const { applications, fetchApplications } = useApplicationStore();
+    const { applications, fetchApplications, loadFailed } = useApplicationStore();
     
     useEffect(() => {
         fetchApplications();
@@ -25,6 +26,17 @@ export default function DashboardPage() {
                    {/* Espacio reservado para acciones globales si se necesitan */}
                 </div>
             </div>
+
+            {loadFailed && (
+                <div role="alert" className="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-destructive/40 bg-destructive/5 p-4 text-sm">
+                    <p>
+                        No se pudieron cargar tus postulaciones. Es un problema para leerlas, no significa que se hayan borrado.
+                    </p>
+                    <Button variant="outline" size="sm" onClick={() => fetchApplications()}>
+                        Reintentar
+                    </Button>
+                </div>
+            )}
 
             <Tabs defaultValue="applications" className="w-full space-y-6">
                 <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
