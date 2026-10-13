@@ -1,13 +1,14 @@
 "use client";
 
 import { useState } from "react";
-import { Check, Eye, EyeOff, Minus } from "lucide-react";
+import { Check, Eye, EyeOff } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { CATEGORY_LABELS, type KeywordCategory } from "@/lib/keywords/categories";
 import type { KeywordStat, KeywordSummary } from "@/lib/stats/keywordAnalysis";
+import { formatPoints } from "./format";
 
 const PAGE_SIZE = 12;
 
@@ -26,6 +27,8 @@ interface DemandRankingProps {
   hiddenIds: ReadonlySet<string>;
   onToggleHidden: (id: string) => void;
   onResetHidden: () => void;
+  /** Marca o desmarca una habilidad faltante en la simulación. */
+  onToggleSimulated: (id: string) => void;
   includeUnverified: boolean;
   onIncludeUnverifiedChange: (value: boolean) => void;
 }
@@ -36,6 +39,7 @@ export function DemandRanking({
   hiddenIds,
   onToggleHidden,
   onResetHidden,
+  onToggleSimulated,
   includeUnverified,
   onIncludeUnverifiedChange,
 }: DemandRankingProps) {
@@ -139,6 +143,7 @@ export function DemandRanking({
               hasCv={hasCv}
               isHidden={hiddenIds.has(stat.id)}
               onToggleHidden={() => onToggleHidden(stat.id)}
+              onToggleSimulated={() => onToggleSimulated(stat.id)}
             />
           ))}
         </ul>
@@ -179,11 +184,16 @@ interface RankingRowProps {
   hasCv: boolean;
   isHidden: boolean;
   onToggleHidden: () => void;
+  onToggleSimulated: () => void;
 }
 
-function RankingRow({ stat, total, hasCv, isHidden, onToggleHidden }: RankingRowProps) {
+function RankingRow({ stat, total, hasCv, isHidden, onToggleHidden, onToggleSimulated }: RankingRowProps) {
   const share = total > 0 ? Math.round((stat.demand / total) * 100) : 0;
-  const barColor = isHidden || !hasCv ? "bg-muted-foreground/40" : stat.inCv ? "bg-skill-have" : "bg-skill-gap";
+  const barColor =
+    isHidden || !hasCv ? "bg-muted-foreground/40"
+    : stat.inCv ? "bg-skill-have"
+    : stat.simulated ? "bg-skill-have/50"
+    : "bg-skill-gap";
 
   return (
     <li
@@ -197,8 +207,17 @@ function RankingRow({ stat, total, hasCv, isHidden, onToggleHidden }: RankingRow
             <span className="sr-only">La tenés:</span>
           </>
         ) : (
+          // Las que faltan se tildan para simular que el CV las suma
           <>
-            <Minus className="size-4 text-skill-gap" aria-hidden />
+            <input
+              type="checkbox"
+              className="size-4 accent-[var(--skill-have)] disabled:opacity-40"
+              checked={stat.simulated}
+              onChange={onToggleSimulated}
+              disabled={isHidden}
+              aria-label={`Simular que sumo ${stat.name}`}
+              title="Simular que la sumo a mi CV"
+            />
             <span className="sr-only">Te falta:</span>
           </>
         ))}
@@ -208,6 +227,9 @@ function RankingRow({ stat, total, hasCv, isHidden, onToggleHidden }: RankingRow
         <p className={`truncate font-medium ${isHidden ? "text-muted-foreground line-through" : ""}`}>{stat.name}</p>
         <div className="flex items-center gap-2 text-xs text-muted-foreground">
           <span className="truncate">{CATEGORY_LABELS[stat.category]}</span>
+          {stat.simulated && (
+            <span className="shrink-0 font-medium tabular-nums text-foreground">{formatPoints(stat.points)}</span>
+          )}
           {!stat.verified && (
             <Badge
               variant="outline"

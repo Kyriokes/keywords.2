@@ -1,14 +1,15 @@
 import { CATEGORY_LABELS } from "@/lib/keywords/categories";
 import type { KeywordSummary } from "@/lib/stats/keywordAnalysis";
+import { formatPoints } from "./format";
 
 const TOP_GAPS = 5;
 
-function formatPoints(points: number): string {
-  const rounded = Math.round(points);
-  return rounded >= 1 ? `+${rounded} ${rounded === 1 ? "pt" : "pts"}` : "menos de 1 pt";
+interface StatsSidebarProps {
+  summary: KeywordSummary;
+  onToggleSimulated: (id: string) => void;
 }
 
-export function StatsSidebar({ summary }: { summary: KeywordSummary }) {
+export function StatsSidebar({ summary, onToggleSimulated }: StatsSidebarProps) {
   const gaps = summary.gaps.slice(0, TOP_GAPS);
 
   return (
@@ -18,20 +19,30 @@ export function StatsSidebar({ summary }: { summary: KeywordSummary }) {
           <h3 id="gaps-title" className="text-lg font-semibold tracking-tight">
             Qué sumar primero
           </h3>
-          <p className="text-sm text-muted-foreground">Las faltantes que más cobertura te dan.</p>
+          <p className="text-sm text-muted-foreground">
+            Las faltantes que más cobertura te dan. Tildalas para simular que las sumás.
+          </p>
         </div>
 
         {gaps.length > 0 ? (
           <ol className="divide-y border-y">
             {gaps.map((gap) => (
-              <li key={gap.id} className="flex items-baseline justify-between gap-3 py-2.5">
-                <div className="min-w-0">
-                  <p className="truncate font-medium">{gap.name}</p>
-                  <p className="text-xs text-muted-foreground">
-                    La piden {gap.demand} de {summary.totalApplications}
-                  </p>
-                </div>
-                <p className="shrink-0 text-sm font-medium tabular-nums">{formatPoints(gap.points)}</p>
+              <li key={gap.id}>
+                <label className="flex cursor-pointer items-center gap-3 py-2.5">
+                  <input
+                    type="checkbox"
+                    className="size-4 shrink-0 accent-[var(--skill-have)]"
+                    checked={gap.simulated}
+                    onChange={() => onToggleSimulated(gap.id)}
+                  />
+                  <span className="min-w-0 flex-1">
+                    <span className="block truncate font-medium">{gap.name}</span>
+                    <span className="block text-xs text-muted-foreground">
+                      La piden {gap.demand} de {summary.totalApplications}
+                    </span>
+                  </span>
+                  <span className="shrink-0 text-sm font-medium tabular-nums">{formatPoints(gap.points)}</span>
+                </label>
               </li>
             ))}
           </ol>

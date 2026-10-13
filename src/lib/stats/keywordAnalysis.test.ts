@@ -130,3 +130,32 @@ describe("matchByApplication", () => {
     expect(matchByApplication(keywords, { vacia: [] }).vacia).toMatchObject({ have: 0, total: 0, ratio: 0 });
   });
 });
+
+describe("simulación de habilidades sumadas", () => {
+  const simulate = (ids: string[], extra: { hiddenIds?: Set<string> } = {}) =>
+    summarizeKeywords({ keywords, byApplication, applicationIds, simulatedIds: new Set(ids), ...extra });
+
+  it("sin nada tildado, la cobertura simulada es la real", () => {
+    expect(simulate([])).toMatchObject({ coverage: 63, simulatedCoverage: 63, simulatedCount: 0 });
+  });
+
+  it("suma los puntos de cada faltante tildada, una a una", () => {
+    // sql pesa 2 de 8 (25 puntos) y docker 1 de 8 (12,5)
+    expect(simulate(["sql"])).toMatchObject({ coverage: 63, simulatedCoverage: 88, simulatedCount: 1 });
+    expect(simulate(["sql", "docker"])).toMatchObject({ coverage: 63, simulatedCoverage: 100, simulatedCount: 2 });
+  });
+
+  it("no cambia la cobertura real ni la lista de faltantes", () => {
+    const summary = simulate(["sql"]);
+    expect(summary.missingCount).toBe(2);
+    expect(summary.gaps.map((gap) => [gap.id, gap.simulated])).toEqual([["sql", true], ["docker", false]]);
+  });
+
+  it("ignora lo tildado que ya está en el CV, está oculto o no existe", () => {
+    expect(simulate(["react", "no-existe"])).toMatchObject({ simulatedCoverage: 63, simulatedCount: 0 });
+
+    const hidden = simulate(["sql"], { hiddenIds: new Set(["sql"]) });
+    expect(hidden).toMatchObject({ coverage: 83, simulatedCoverage: 83, simulatedCount: 0 });
+    expect(hidden.stats.find((stat) => stat.id === "sql")?.simulated).toBe(false);
+  });
+});

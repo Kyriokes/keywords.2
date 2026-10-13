@@ -40,6 +40,8 @@ export function StatsDashboard({
   // nuevos entran al cálculo sin tener que sincronizar nada. null = todavía no tocó los puestos.
   const [excludedOverride, setExcludedOverride] = useState<string[] | null>(null);
   const [hiddenIds, setHiddenIds] = useState<string[]>([]);
+  // Habilidades faltantes que el usuario tildó para simular que las suma a su CV
+  const [simulatedIds, setSimulatedIds] = useState<string[]>([]);
   const [includeUnverified, setIncludeUnverified] = useState(true);
 
   // Los puestos son roles estandarizados, no títulos de oferta: así no crecen con cada postulación
@@ -47,17 +49,23 @@ export function StatsDashboard({
     const roles = Array.from(new Set(applications.flatMap((app) => (app.role ? [app.role] : [])))).sort();
     return applications.some((app) => !app.role) ? [...roles, UNCLASSIFIED] : roles;
   }, [applications]);
+  // Puestos deseados que el usuario efectivamente tiene cargados: son el filtro por defecto
+  const preferredPositions = useMemo(
+    () => positions.filter((position) => preferredRoles.includes(position)),
+    [positions, preferredRoles]
+  );
   const selectedPositions = useMemo(() => {
-    // Por defecto se analizan los puestos deseados que el usuario efectivamente tiene cargados
-    const preferred = positions.filter((position) => preferredRoles.includes(position));
-    const excluded = excludedOverride ?? (preferred.length > 0 ? positions.filter((p) => !preferred.includes(p)) : []);
+    const excluded =
+      excludedOverride ??
+      (preferredPositions.length > 0 ? positions.filter((p) => !preferredPositions.includes(p)) : []);
 
     const selected = positions.filter((position) => !excluded.includes(position));
     // Si lo elegido ya no existe (por ejemplo, se borraron esas postulaciones) se vuelve a mostrar todo
     return selected.length > 0 ? selected : positions;
-  }, [positions, preferredRoles, excludedOverride]);
+  }, [positions, preferredPositions, excludedOverride]);
 
   const hiddenSet = useMemo(() => new Set(hiddenIds), [hiddenIds]);
+  const simulatedSet = useMemo(() => new Set(simulatedIds), [simulatedIds]);
 
   const summary = useMemo(() => {
     const applicationIds = applications
@@ -69,9 +77,10 @@ export function StatsDashboard({
       byApplication: insights?.byApplication ?? {},
       applicationIds,
       hiddenIds: hiddenSet,
+      simulatedIds: simulatedSet,
       includeUnverified,
     });
-  }, [applications, insights, positions, selectedPositions, hiddenSet, includeUnverified]);
+  }, [applications, insights, selectedPositions, hiddenSet, simulatedSet, includeUnverified]);
 
   const togglePosition = (position: string) => {
     const excluded = positions.filter((item) => !selectedPositions.includes(item));
@@ -83,9 +92,15 @@ export function StatsDashboard({
     }
   };
 
-  const toggleHidden = (id: string) => {
-    setHiddenIds((previous) => (previous.includes(id) ? previous.filter((item) => item !== id) : [...previous, id]));
-  };
+  const toggle = (id: string) => (previous: string[]) =>
+    previous.includes(id) ? previous.filter((item) => item !== id) : [...previous, id];
+
+  const toggleHidden = (id: string) => setHiddenIds(toggle(id));
+  const toggleSimulated = (id: string) => setSimulatedIds(toggle(id));
+
+  // "Solo mis puestos deseados" tiene sentido si el filtro por defecto no es "todos" y el usuario lo cambió
+  const canRestorePreferred =
+    excludedOverride !== null && preferredPositions.length > 0 && preferredPositions.length < positions.length;
 
   if (applications.length === 0) {
     return (
@@ -142,6 +157,16 @@ export function StatsDashboard({
                 </Button>
               );
             })}
+            {selectedPositions.length < positions.length && (
+              <Button type="button" variant="link" size="sm" className="h-7 px-1" onClick={() => setExcludedOverride([])}>
+                Marcar todos
+              </Button>
+            )}
+            {canRestorePreferred && (
+              <Button type="button" variant="link" size="sm" className="h-7 px-1" onClick={() => setExcludedOverride(null)}>
+                Solo mis puestos deseados
+              </Button>
+            )}
           </div>
         )}
       </div>
@@ -155,7 +180,7 @@ export function StatsDashboard({
       ) : (
         <>
           {hasCv ? (
-            <CoverageSummary summary={summary} />
+            <CoverageSummary summary={summary} onClearSimulation={() => setSimulatedIds([])} />
           ) : (
             <EmptyState
               title="Subí tu CV para medir cuánto cubrís"
@@ -173,10 +198,11 @@ export function StatsDashboard({
               hiddenIds={hiddenSet}
               onToggleHidden={toggleHidden}
               onResetHidden={() => setHiddenIds([])}
+              onToggleSimulated={toggleSimulated}
               includeUnverified={includeUnverified}
               onIncludeUnverifiedChange={setIncludeUnverified}
             />
-            {hasCv && <StatsSidebar summary={summary} />}
+            {hasCv && <StatsSidebar summary={summary} onToggleSimulated={toggleSimulated} />}
           </div>
         </>
       )}

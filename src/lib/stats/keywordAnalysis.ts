@@ -15,6 +15,8 @@ export interface KeywordStat extends InsightKeyword {
   demand: number;
   /** Puntos de cobertura que aporta (si la tenés) o que sumarías (si te falta). */
   points: number;
+  /** El usuario la tildó para simular que la suma a su CV. Solo vale para las que faltan y cuentan. */
+  simulated: boolean;
 }
 
 export interface CategoryCoverage {
@@ -29,6 +31,10 @@ export interface KeywordSummary {
   totalApplications: number;
   /** Cobertura ponderada por demanda, de 0 a 100. */
   coverage: number;
+  /** Cobertura que habría si el CV sumara las habilidades tildadas; igual a `coverage` si no hay ninguna. */
+  simulatedCoverage: number;
+  /** Cuántas de las que faltan están tildadas en la simulación. */
+  simulatedCount: number;
   haveCount: number;
   missingCount: number;
   /** Todas las keywords del filtro, ordenadas por demanda. Incluye las ocultas. */
@@ -46,6 +52,8 @@ export interface SummarizeInput {
   applicationIds: string[];
   /** Keywords que el usuario sacó del cálculo. */
   hiddenIds?: ReadonlySet<string>;
+  /** Keywords faltantes que el usuario tildó para simular que las suma. */
+  simulatedIds?: ReadonlySet<string>;
   includeUnverified?: boolean;
 }
 
@@ -60,6 +68,7 @@ export function summarizeKeywords({
   byApplication,
   applicationIds,
   hiddenIds = new Set(),
+  simulatedIds = new Set(),
   includeUnverified = true,
 }: SummarizeInput): KeywordSummary {
   const demandById = new Map<string, number>();
@@ -80,7 +89,13 @@ export function summarizeKeywords({
   const stats: KeywordStat[] = requested
     .map((keyword) => {
       const demand = demandById.get(keyword.id)!;
-      return { ...keyword, demand, points: hiddenIds.has(keyword.id) ? 0 : share(demand) };
+      const hidden = hiddenIds.has(keyword.id);
+      return {
+        ...keyword,
+        demand,
+        points: hidden ? 0 : share(demand),
+        simulated: !keyword.inCv && !hidden && simulatedIds.has(keyword.id),
+      };
     })
     .sort((a, b) => b.demand - a.demand || a.name.localeCompare(b.name, "es"));
 
@@ -102,9 +117,14 @@ export function summarizeKeywords({
     }];
   });
 
+  const sumPoints = (items: KeywordStat[]) => items.reduce((sum, stat) => sum + stat.points, 0);
+  const simulated = gaps.filter((stat) => stat.simulated);
+
   return {
     totalApplications: applicationIds.length,
-    coverage: Math.round(have.reduce((sum, stat) => sum + stat.points, 0)),
+    coverage: Math.round(sumPoints(have)),
+    simulatedCoverage: Math.round(sumPoints(have) + sumPoints(simulated)),
+    simulatedCount: simulated.length,
     haveCount: have.length,
     missingCount: gaps.length,
     stats,
