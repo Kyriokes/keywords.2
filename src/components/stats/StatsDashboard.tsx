@@ -9,6 +9,7 @@ import type { KeywordInsights } from "@/actions/insights-actions";
 import { SENIORITY_LABELS, SENIORITY_LEVELS, isSeniority } from "@/lib/positions/rules";
 import { summarizeKeywords } from "@/lib/stats/keywordAnalysis";
 import { isBoolean, isStringArray, usePersistentState } from "@/lib/usePersistentState";
+import { CopyCvPrompt } from "./CopyCvPrompt";
 import { CoverageSummary } from "./CoverageSummary";
 import { DemandRanking } from "./DemandRanking";
 import { StatsSidebar } from "./StatsSidebar";
@@ -19,7 +20,7 @@ const UNCLASSIFIED = "Sin clasificar";
 const NO_SENIORITY = "Sin nivel";
 
 interface StatsDashboardProps {
-  cvs: Array<{ id: string; name: string }>;
+  cvs: Array<{ id: string; name: string; text?: string }>;
   activeCvId?: string;
   onSelectCv: (id: string) => void;
   applications: Array<{ id: string; role?: string; seniority?: string }>;
@@ -147,6 +148,7 @@ export function StatsDashboard({
   }
 
   const hasCv = Boolean(insights?.cvId);
+  const cvText = cvs.find((cv) => cv.id === insights?.cvId)?.text ?? "";
 
   return (
     <div className="space-y-8">
@@ -251,6 +253,13 @@ export function StatsDashboard({
               compact
             />
           )}
+
+          <CopyCvPrompt
+            summary={summary}
+            roles={selectedPositions.filter((position) => position !== UNCLASSIFIED)}
+            levels={levels.length > 1 ? selectedLevels.filter((level) => level !== NO_SENIORITY) : []}
+            cvText={hasCv ? cvText : ""}
+          />
 
           <div className="grid gap-x-10 gap-y-8 lg:grid-cols-[minmax(0,1fr)_17rem]">
             <DemandRanking
