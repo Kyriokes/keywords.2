@@ -8,7 +8,7 @@ export class HuggingFaceProvider implements AiProvider {
     private client: HfInference;
     private model: string;
 
-    constructor(apiKey: string, model: string = "Qwen/Qwen2.5-Coder-3B-Instruct") {
+    constructor(apiKey: string, model: string = "Qwen/Qwen3-Next-80B-A3B-Instruct") {
         this.client = new HfInference(apiKey);
         this.model = model;
     }
@@ -21,7 +21,7 @@ export class HuggingFaceProvider implements AiProvider {
                     { role: "user", content: prompt }
                 ],
                 max_tokens: 1024,
-                temperature: 0.1, // Recomendado para coding
+                temperature: 0.1,
                 top_p: 0.95,
             });
 

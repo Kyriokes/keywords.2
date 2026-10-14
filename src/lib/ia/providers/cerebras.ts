@@ -3,12 +3,12 @@ import OpenAI from "openai";
 
 export class CerebrasProvider implements AiProvider {
     id = "cerebras";
-    name = "Cerebras (Llama 3.1 8B)";
+    name = "Cerebras (Qwen 3.8)";
     
     private client: OpenAI;
     private model: string;
 
-    constructor(apiKey: string, model: string = "llama3.1-8b") {
+    constructor(apiKey: string, model: string = "qwen-3.8-27b") {
         this.client = new OpenAI({
             baseURL: 'https://api.cerebras.ai/v1',
             apiKey: apiKey,
@@ -46,6 +46,9 @@ export class CerebrasProvider implements AiProvider {
         } catch (e: unknown) {
             console.error("Cerebras Health Check Failed:", e);
             if (e instanceof Error) {
+                if (e.message.includes("402")) {
+                    return { ok: false, error: "Sin saldo o plan vencido (402 Billing)" };
+                }
                 if (e.message.includes("404")) {
                     return { ok: false, error: `Modelo no encontrado o URL incorrecta. Modelo actual: ${this.model}` };
                 }

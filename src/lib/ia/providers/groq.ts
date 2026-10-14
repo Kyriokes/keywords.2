@@ -3,12 +3,12 @@ import Groq from "groq-sdk";
 
 export class GroqProvider implements AiProvider {
     id = "groq";
-    name = "Groq (Llama 3)";
+    name = "Groq (Qwen 3.8)";
     
     private client: Groq;
     private model: string;
 
-    constructor(apiKey: string, model: string = "llama-3.3-70b-versatile") {
+    constructor(apiKey: string, model: string = "qwen/qwen3.8-27b") {
         this.client = new Groq({
             apiKey: apiKey,
         });

@@ -1,5 +1,6 @@
 import { AiProvider, HealthCheckResult } from "./types";
 import OpenAI from "openai";
+import type { ChatCompletionCreateParamsNonStreaming } from "openai/resources/chat/completions";
 
 export class OpenRouterProvider implements AiProvider {
     id = "openrouter";
@@ -8,7 +9,7 @@ export class OpenRouterProvider implements AiProvider {
     private client: OpenAI;
     private model: string;
 
-    constructor(apiKey: string, model: string = "nvidia/llama-3.1-nemotron-70b-instruct") {
+    constructor(apiKey: string, model: string = "nvidia/nemotron-3-super-120b-a12b:free") {
         this.client = new OpenAI({
             baseURL: 'https://openrouter.ai/api/v1',
             apiKey: apiKey,
@@ -17,21 +18,25 @@ export class OpenRouterProvider implements AiProvider {
                 "X-Title": "KeyWords V2",
             }
         });
-        // Usamos Nemotron 70b Instruct como modelo por defecto
+        // Nemotron 3 Super (versión gratuita) como modelo por defecto
         this.model = model;
     }
 
     async generate(prompt: string): Promise<string> {
         try {
-            const completion = await this.client.chat.completions.create({
+            // Nemotron razona por defecto y gasta los max_tokens pensando: la respuesta llega vacía.
+            // `reasoning` es un parámetro propio de OpenRouter, por eso no está en los tipos del SDK.
+            const params: ChatCompletionCreateParamsNonStreaming & { reasoning: { enabled: boolean } } = {
                 messages: [
                     { role: "user", content: prompt }
                 ],
                 model: this.model,
                 temperature: 0,
                 max_tokens: 1024,
-                stream: false
-            });
+                stream: false,
+                reasoning: { enabled: false }
+            };
+            const completion = await this.client.chat.completions.create(params);
 
             return completion.choices[0]?.message?.content || "";
         } catch (error) {

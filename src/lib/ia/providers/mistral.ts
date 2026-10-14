@@ -8,7 +8,7 @@ export class MistralProvider implements AiProvider {
     private client: Mistral;
     private model: string;
 
-    constructor(apiKey: string, model: string = "mistral-small-latest") {
+    constructor(apiKey: string, model: string = "ministral-14b-latest") {
         this.client = new Mistral({
             apiKey: apiKey,
         });
