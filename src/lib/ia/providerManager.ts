@@ -1,13 +1,6 @@
 import prisma from "@/lib/prisma";
-
-export interface ProviderState {
-    score: number;
-    cooldownUntil: number | null; // Timestamp
-    totalGenerated: number;
-    totalAccepted: number;
-    totalRejected: number;
-    totalErrors: number;
-}
+import type { HealthCheckResult } from "./providers/types";
+import type { ProviderState } from "./providerStatus";
 
 const DEFAULT_SCORE = 100;
 const MIN_SCORE = 10;
@@ -16,6 +9,7 @@ const REWARD_ACCEPT = 5;
 const PENALTY_REJECT = 10;
 const PENALTY_ERROR = 30;
 const COOLDOWN_MS = 5 * 60 * 1000; // 5 minutes
+const MAX_ERROR_LENGTH = 300;
 
 class ProviderManager {
     private static instance: ProviderManager;
@@ -87,7 +81,10 @@ class ProviderManager {
                 totalGenerated: 0,
                 totalAccepted: 0,
                 totalRejected: 0,
-                totalErrors: 0
+                totalErrors: 0,
+                lastOkAt: null,
+                lastError: null,
+                lastErrorAt: null
             });
         }
         return this.stats.get(id)!;
@@ -140,25 +137,43 @@ class ProviderManager {
         state.score = Math.max(state.score - PENALTY_REJECT, MIN_SCORE);
     }
 
-    public reportFailure(id: string) {
+    public reportFailure(id: string, error: string) {
+        const state = this.pause(id, error);
+        state.score = Math.max(state.score - PENALTY_ERROR, MIN_SCORE);
+        console.log(`[ProviderManager] Provider ${id} failed. Paused for 5min. Score: ${state.score}`);
+    }
+
+    /**
+     * Resultado de un ping manual del admin. Un fallo lo saca de rotación igual que un error real,
+     * pero sin bajar el score; un éxito lo devuelve a la rotación sin esperar a que venza la pausa.
+     */
+    public reportPing(id: string, result: HealthCheckResult) {
+        if (result.ok) {
+            const state = this.getOrCreate(id);
+            state.lastOkAt = Date.now();
+            state.cooldownUntil = null;
+        } else {
+            this.pause(id, result.error ?? "Error desconocido");
+        }
+    }
+
+    private pause(id: string, error: string): ProviderState {
         const state = this.getOrCreate(id);
         state.totalErrors++;
-        state.score = Math.max(state.score - PENALTY_ERROR, MIN_SCORE);
-        state.cooldownUntil = Date.now() + COOLDOWN_MS;
-        console.log(`[ProviderManager] Provider ${id} failed. Paused for 5min. Score: ${state.score}`);
+        state.lastError = error.slice(0, MAX_ERROR_LENGTH);
+        state.lastErrorAt = Date.now();
+        state.cooldownUntil = state.lastErrorAt + COOLDOWN_MS;
+        return state;
     }
 
     public logGeneration(id: string) {
         const state = this.getOrCreate(id);
         state.totalGenerated++;
+        state.lastOkAt = Date.now();
     }
 
-    public getAllStats(): Record<string, ProviderState> {
-        const obj: Record<string, ProviderState> = {};
-        this.stats.forEach((val, key) => {
-            obj[key] = { ...val };
-        });
-        return obj;
+    public getStats(id: string): ProviderState {
+        return { ...this.getOrCreate(id) };
     }
     
     // Persiste que un proveedor generó un resultado para este perfil

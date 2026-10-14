@@ -31,7 +31,7 @@ export async function postToMcp(
             console.error(`[Client] Provider ${pid} failed:`, error);
             
             // 4. Failure
-            providerManager.reportFailure(pid);
+            providerManager.reportFailure(pid, error instanceof Error ? error.message : String(error));
             currentExcludes.push(pid);
             
             // getAiProvider returns Ollama as the *last* resort: if it failed there is nothing left to try.

@@ -1,36 +1,82 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { Activity, CheckCircle2, RefreshCw, XCircle } from "lucide-react";
+import { Activity, RefreshCw } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import type { ProviderState } from "@/lib/ia/providerManager";
+import { formatDuration, getProviderStatus, type ProviderSnapshot } from "@/lib/ia/providerStatus";
 import { PROVIDER_IDS } from "@/lib/ia/providers/ids";
-import { useStatsStore } from "@/store/statsStore";
 import type { PingResponse } from "@/types/admin";
 
-type PingResult = { status: 'ok' | 'error' | 'loading'; latency?: number };
+// `at` es el momento de la lectura: las pausas y los "hace X" se calculan contra él
+type BackendSnapshot = { stats: Record<string, ProviderSnapshot>; at: number };
 
-async function loadBackendStats(): Promise<Record<string, ProviderState>> {
+async function loadBackendStats(): Promise<BackendSnapshot> {
   const res = await fetch('/api/debug/providers');
   if (!res.ok) throw new Error('Error al obtener estadísticas');
-  return res.json();
+  return { stats: await res.json(), at: Date.now() };
+}
+
+function ErrorDetail({ error }: { error: string | null }) {
+  if (!error) return null;
+  return (
+    <p className="text-xs text-muted-foreground font-normal truncate max-w-[24rem]" title={error}>
+      {error}
+    </p>
+  );
+}
+
+function ProviderStatusCell({ provider, now }: { provider: ProviderSnapshot; now: number }) {
+  const status = getProviderStatus(provider, now);
+
+  switch (status.kind) {
+    case "unconfigured":
+      return <span className="text-muted-foreground font-semibold">SIN KEY</span>;
+    case "paused":
+      return (
+        <div>
+          <span className="text-red-500 font-semibold">PAUSADO</span>
+          <span className="text-xs ml-1 text-muted-foreground">({formatDuration(status.remainingMs)})</span>
+          <ErrorDetail error={status.error} />
+        </div>
+      );
+    case "failing":
+      return (
+        <div>
+          <span className="text-amber-500 font-semibold">EN ROTACIÓN</span>
+          <span className="text-xs ml-1 text-muted-foreground">· falló hace {formatDuration(now - status.at)}</span>
+          <ErrorDetail error={status.error} />
+        </div>
+      );
+    case "ok":
+      return (
+        <div>
+          <span className="text-green-600 font-semibold">EN ROTACIÓN</span>
+          <span className="text-xs ml-1 text-muted-foreground">· OK hace {formatDuration(now - status.at)}</span>
+        </div>
+      );
+    case "unknown":
+      return (
+        <div>
+          <span className="text-green-600 font-semibold">EN ROTACIÓN</span>
+          <span className="text-xs ml-1 text-muted-foreground">· sin verificar</span>
+        </div>
+      );
+  }
 }
 
 export function ProvidersPanel() {
-  const { providerStats } = useStatsStore();
-
-  const [backendStats, setBackendStats] = useState<Record<string, ProviderState>>({});
+  const [backend, setBackend] = useState<BackendSnapshot | null>(null);
   const [loadingStats, setLoadingStats] = useState(true);
-  const [pingResults, setPingResults] = useState<Record<string, PingResult>>({});
+  const [pinging, setPinging] = useState<Record<string, boolean>>({});
 
   useEffect(() => {
     let cancelled = false;
     loadBackendStats()
       .then((data) => {
-        if (!cancelled) setBackendStats(data);
+        if (!cancelled) setBackend(data);
       })
       .catch(() => {
         if (!cancelled) toast.error("Error al cargar estado del backend");
@@ -46,7 +92,7 @@ export function ProvidersPanel() {
   const refresh = async () => {
     setLoadingStats(true);
     try {
-      setBackendStats(await loadBackendStats());
+      setBackend(await loadBackendStats());
     } catch {
       toast.error("Error al cargar estado del backend");
     } finally {
@@ -55,22 +101,23 @@ export function ProvidersPanel() {
   };
 
   const handlePing = async (providerId: string) => {
-    setPingResults(prev => ({ ...prev, [providerId]: { status: 'loading' } }));
+    setPinging(prev => ({ ...prev, [providerId]: true }));
     try {
       const res = await fetch(`/api/admin/ping?provider=${providerId}`);
       const data = (await res.json()) as PingResponse;
 
       if (res.ok && data.status === 'ok') {
-        setPingResults(prev => ({ ...prev, [providerId]: { status: 'ok', latency: data.latency } }));
         toast.success(`Ping a ${providerId} exitoso (${data.latency}ms)`);
       } else {
-        setPingResults(prev => ({ ...prev, [providerId]: { status: 'error' } }));
         toast.error(data.error || `Error al conectar con ${providerId}`);
       }
     } catch {
-      setPingResults(prev => ({ ...prev, [providerId]: { status: 'error' } }));
       toast.error(`Error de red al contactar ${providerId}`);
+    } finally {
+      setPinging(prev => ({ ...prev, [providerId]: false }));
     }
+    // El ping actualiza el estado en el server: se vuelve a leer para mostrarlo
+    await refresh();
   };
 
   return (
@@ -78,9 +125,9 @@ export function ProvidersPanel() {
       <Card>
         <CardHeader className="flex flex-row items-start justify-between gap-4">
           <div className="space-y-1.5">
-            <CardTitle>Estado y Reputación</CardTitle>
+            <CardTitle>Estado de Proveedores</CardTitle>
             <CardDescription>
-              Puntajes dinámicos basados en feedback y estabilidad técnica.
+              En rotación: el router lo puede elegir. Un error real o un ping fallido lo pausa 5 minutos; un ping exitoso lo reactiva.
             </CardDescription>
           </div>
           <Button variant="ghost" size="sm" onClick={refresh} disabled={loadingStats}>
@@ -89,39 +136,45 @@ export function ProvidersPanel() {
           </Button>
         </CardHeader>
         <CardContent>
-          {Object.keys(backendStats).length === 0 ? (
-            <p className="text-muted-foreground italic">No hay datos de backend disponibles.</p>
+          {!backend ? (
+            <p className="text-muted-foreground italic">
+              {loadingStats ? "Cargando..." : "No hay datos de backend disponibles."}
+            </p>
           ) : (
             <Table>
               <TableHeader>
                 <TableRow>
                   <TableHead>Proveedor</TableHead>
-                  <TableHead>Puntaje (Score)</TableHead>
                   <TableHead>Estado</TableHead>
+                  <TableHead>Puntaje (Score)</TableHead>
                   <TableHead>Gen/Acept/Rech/Err</TableHead>
+                  <TableHead>Acciones</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {Object.entries(backendStats).map(([id, state]) => {
-                  const isPaused = state.cooldownUntil && state.cooldownUntil > Date.now();
+                {PROVIDER_IDS.map((id) => {
+                  const provider = backend.stats[id];
+                  if (!provider) return null;
                   return (
                     <TableRow key={id}>
                       <TableCell className="font-medium capitalize">{id}</TableCell>
-                      <TableCell className="font-bold">{state.score.toFixed(0)}</TableCell>
                       <TableCell>
-                        {isPaused ? (
-                          <span className="text-red-500 font-semibold flex items-center">
-                            PAUSADO
-                            <span className="text-xs ml-1 font-normal text-muted-foreground">
-                              ({Math.ceil((state.cooldownUntil! - Date.now()) / 1000)}s)
-                            </span>
-                          </span>
-                        ) : (
-                          <span className="text-green-600 font-semibold">ACTIVO</span>
-                        )}
+                        <ProviderStatusCell provider={provider} now={backend.at} />
                       </TableCell>
+                      <TableCell className="font-bold">{provider.score.toFixed(0)}</TableCell>
                       <TableCell className="text-xs font-mono">
-                        {state.totalGenerated}/{state.totalAccepted}/{state.totalRejected}/{state.totalErrors}
+                        {provider.totalGenerated}/{provider.totalAccepted}/{provider.totalRejected}/{provider.totalErrors}
+                      </TableCell>
+                      <TableCell>
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          onClick={() => handlePing(id)}
+                          disabled={!provider.configured || pinging[id]}
+                        >
+                          <Activity className={`h-3 w-3 mr-1 ${pinging[id] ? 'animate-pulse' : ''}`} />
+                          {pinging[id] ? "Probando..." : "Ping"}
+                        </Button>
                       </TableCell>
                     </TableRow>
                   );
@@ -129,61 +182,6 @@ export function ProvidersPanel() {
               </TableBody>
             </Table>
           )}
-        </CardContent>
-      </Card>
-
-      <Card>
-        <CardHeader>
-          <CardTitle>Estadísticas de Proveedores</CardTitle>
-          <CardDescription>Eficacia basada en aceptación de respuestas y estado de conexión.</CardDescription>
-        </CardHeader>
-        <CardContent>
-          <Table>
-            <TableHeader>
-              <TableRow>
-                <TableHead>Proveedor</TableHead>
-                <TableHead>Estado (Ping)</TableHead>
-                <TableHead>Generadas</TableHead>
-                <TableHead>Aceptadas</TableHead>
-                <TableHead>Rechazadas</TableHead>
-                <TableHead>Tasa de Éxito</TableHead>
-                <TableHead>Acciones</TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {PROVIDER_IDS.map((provider) => {
-                const stats = providerStats[provider] || { generated: 0, accepted: 0, rejected: 0 };
-                const rate = stats.generated > 0 ? ((stats.accepted / stats.generated) * 100).toFixed(1) : "N/A";
-                const ping = pingResults[provider];
-
-                return (
-                  <TableRow key={provider}>
-                    <TableCell className="font-medium capitalize">{provider}</TableCell>
-                    <TableCell>
-                      {ping?.status === 'loading' && <span className="text-yellow-600 flex items-center gap-1"><Activity className="h-3 w-3 animate-pulse" /> Probando...</span>}
-                      {ping?.status === 'ok' && <span className="text-green-600 flex items-center gap-1"><CheckCircle2 className="h-3 w-3" /> OK ({ping.latency}ms)</span>}
-                      {ping?.status === 'error' && <span className="text-red-600 flex items-center gap-1"><XCircle className="h-3 w-3" /> Error</span>}
-                      {!ping && <span className="text-muted-foreground text-xs">-</span>}
-                    </TableCell>
-                    <TableCell>{stats.generated}</TableCell>
-                    <TableCell className="text-green-600 font-bold">{stats.accepted}</TableCell>
-                    <TableCell className="text-red-600">{stats.rejected}</TableCell>
-                    <TableCell>{rate === "N/A" ? "-" : `${rate}%`}</TableCell>
-                    <TableCell>
-                      <Button
-                        variant="outline"
-                        size="sm"
-                        onClick={() => handlePing(provider)}
-                        disabled={ping?.status === 'loading'}
-                      >
-                        <Activity className="h-3 w-3 mr-1" /> Ping
-                      </Button>
-                    </TableCell>
-                  </TableRow>
-                );
-              })}
-            </TableBody>
-          </Table>
         </CardContent>
       </Card>
     </section>

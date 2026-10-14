@@ -31,6 +31,11 @@ function isPremiumId(id: string): id is PremiumProviderId {
     return Object.prototype.hasOwnProperty.call(premiumProviders, id);
 }
 
+// Ollama no usa key: siempre queda como último recurso local.
+export function isProviderConfigured(id: ProviderId): boolean {
+    return id === "ollama" || !!process.env[premiumProviders[id].envKey];
+}
+
 export function createProvider(id: string): AiProvider | null {
     if (id === "ollama") return new OllamaProvider();
     if (!isPremiumId(id)) return null;

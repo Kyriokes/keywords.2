@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createProvider } from "@/lib/ia/providers/factory";
+import { providerManager } from "@/lib/ia/providerManager";
 import { isAdminSession } from "@/lib/auth-guards";
 
 export async function GET(req: NextRequest) {
@@ -24,6 +25,9 @@ export async function GET(req: NextRequest) {
         const start = Date.now();
         const healthResult = await provider.checkHealth();
         const latency = Date.now() - start;
+
+        // Así el estado del panel (y el router) reflejan lo que acaba de pasar
+        providerManager.reportPing(provider.id, healthResult);
 
         if (healthResult.ok) {
             return NextResponse.json({ status: "ok", latency });
