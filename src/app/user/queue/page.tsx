@@ -1,12 +1,17 @@
 import type { Metadata } from "next";
 import Link from "next/link";
+import { getJobSearchSettings } from "@/actions/job-search-actions";
 import { getQueue } from "@/actions/queue-actions";
+import { JobSearchPanel } from "@/components/JobSearchPanel";
 import { QueueBoard } from "@/components/QueueBoard";
 
 export const metadata: Metadata = { title: "Cola de postulaciones" };
 
+// "Buscar ahora" consulta varios portales: necesita más que el tiempo por defecto
+export const maxDuration = 120;
+
 export default async function QueuePage() {
-    const queue = await getQueue();
+    const [queue, searchSettings] = await Promise.all([getQueue(), getJobSearchSettings()]);
 
     return (
         <div className="container mx-auto max-w-4xl space-y-8 px-4 py-8">
@@ -26,6 +31,7 @@ export default async function QueuePage() {
                     </Link>
                 </p>
             </div>
+            <JobSearchPanel initial={searchSettings} />
             <QueueBoard initial={queue} />
         </div>
     );

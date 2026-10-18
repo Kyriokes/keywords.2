@@ -12,6 +12,7 @@ export const publicRoutes = [
   "/api/auth", // Rutas internas de NextAuth
   "/opengraph-image", // Imagen para compartir: la piden las redes, sin sesión
   "/api/mcp", // Servidor MCP para agentes: se autentica con el token personal, no con la cookie
+  "/api/cron/job-search", // Cron de Vercel: se autentica con CRON_SECRET
 ];
 
 /**

@@ -27,6 +27,8 @@ export const LIMITS = {
     coverLetterTemplates: 20,
     mediaAssets: 10,
     coverLettersPerDay: 30,
+    atsBoards: 30,
+    searchMaxPerRun: 25,
 } as const;
 
 /** Resultado de las server actions cuyos errores esperados se muestran al usuario. */
@@ -204,6 +206,15 @@ export const mediaAssetSchema = z.object({
         }
         return link;
     }),
+});
+
+export const jobSearchSettingsSchema = z.object({
+    enabled: z.boolean(),
+    sources: z.array(z.string()).max(10),
+    // Una empresa por línea, como "greenhouse:stripe"; se validan contra los ATS conocidos al guardar
+    atsBoards: z.array(z.string().trim().toLowerCase()).transform((boards) => Array.from(new Set(boards.filter(Boolean)))),
+    minScore: z.number().int().min(0).max(100),
+    maxPerRun: z.number().int().min(1).max(LIMITS.searchMaxPerRun),
 });
 
 /** Primer mensaje de error de un safeParse fallido, para mostrar al usuario. */
