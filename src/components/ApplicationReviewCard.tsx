@@ -28,7 +28,8 @@ export function ApplicationReviewCard() {
                 ...data,
                 positionId: data.positionId || data.jobTitle, // Use jobTitle as positionId/Title if not set
                 provider: providerUsed,
-                reviewed: true
+                reviewed: true,
+                status: pendingApplication.status
             });
         } catch (e) {
             // El resultado queda abierto para que el usuario pueda cancelar o reintentar

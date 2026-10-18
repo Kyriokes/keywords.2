@@ -24,6 +24,9 @@ export interface CreateApplicationData {
   /** Fecha (AAAA-MM-DD) y estado originales, cuando la postulación viene de un respaldo. */
   date?: string
   status?: string
+  company?: string
+  applyUrl?: string
+  applyMode?: string
 }
 
 // Formato que espera el store del cliente
@@ -40,7 +43,10 @@ function toStoreApplication(app: ApplicationWithRelations) {
     role: app.canonicalPosition?.name || undefined,
     seniority: app.seniority || undefined,
     provider: app.provider || undefined,
-    status: app.status || "APPLIED"
+    status: app.status || "APPLIED",
+    company: app.company || undefined,
+    applyUrl: app.applyUrl || undefined,
+    applyMode: app.applyMode || undefined
   }
 }
 

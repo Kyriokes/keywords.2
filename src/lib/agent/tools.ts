@@ -27,10 +27,10 @@ async function findOwnedApplication(ctx: AgentContext, id: string) {
 const getCandidate = defineTool({
     name: "get_candidate",
     description:
-        "Datos del candidato para completar formularios: nombre, email, el CV activo (texto completo) y archivos reutilizables como el video de presentación.",
+        "Datos del candidato para completar formularios: nombre, email, el CV activo (texto completo), cartas de presentación modelo y archivos reutilizables como el video de presentación.",
     input: z.object({}),
     run: async (ctx: AgentContext) => {
-        const [user, activeCv, mediaAssets] = await Promise.all([
+        const [user, activeCv, mediaAssets, coverLetterTemplates] = await Promise.all([
             prisma.user.findUnique({ where: { id: ctx.userId }, select: { name: true, email: true } }),
             prisma.cV.findFirst({
                 where: { profileId: ctx.profileId, isPrimary: true },
@@ -41,8 +41,14 @@ const getCandidate = defineTool({
                 select: { id: true, kind: true, name: true, url: true },
                 orderBy: { createdAt: "desc" },
             }),
+            // Las cartas sin postulación son modelos para adaptar a cada oferta
+            prisma.coverLetter.findMany({
+                where: { profileId: ctx.profileId, applicationId: null },
+                select: { name: true, text: true },
+                orderBy: { updatedAt: "desc" },
+            }),
         ]);
-        return { name: user?.name, email: user?.email, activeCv, mediaAssets };
+        return { name: user?.name, email: user?.email, activeCv, mediaAssets, coverLetterTemplates };
     },
 });
 

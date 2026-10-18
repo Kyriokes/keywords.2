@@ -67,6 +67,9 @@ export function Navbar({ session }: NavbarProps) {
                             <Link href="/user/dashboard" className="rounded-full px-3 py-2 text-muted-foreground transition-colors duration-300 hover:bg-muted hover:text-foreground">
                                 Mis postulaciones
                             </Link>
+                            <Link href="/user/queue" className="rounded-full px-3 py-2 text-muted-foreground transition-colors duration-300 hover:bg-muted hover:text-foreground">
+                                Cola
+                            </Link>
                             <Link href="/user/profile" className="rounded-full px-3 py-2 text-muted-foreground transition-colors duration-300 hover:bg-muted hover:text-foreground">
                                 Mi perfil
                             </Link>

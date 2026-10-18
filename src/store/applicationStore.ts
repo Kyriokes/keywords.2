@@ -18,6 +18,10 @@ export interface JobApplication {
   seniority?: string;
   provider?: string;
   status: string;
+  company?: string;
+  /** Formulario de postulación externo, si es distinto de `link`. */
+  applyUrl?: string;
+  applyMode?: string;
 }
 
 export interface PendingApplication {
@@ -26,6 +30,8 @@ export interface PendingApplication {
   unverifiedWords?: string[];
   providerUsed: string;
   excludedProviders: string[];
+  /** Estado con el que se guarda: ya enviada, para que la complete Claude o para después. */
+  status?: string;
 }
 
 interface ApplicationState {
@@ -84,7 +90,10 @@ export const useApplicationStore = create<ApplicationState>((set, get) => ({
           provider: appData.provider,
           reviewed: appData.reviewed,
           date: appData.date,
-          status: appData.status
+          status: appData.status,
+          company: appData.company,
+          applyUrl: appData.applyUrl,
+          applyMode: appData.applyMode
       });
 
       // Los errores esperados llegan como valor: se relanzan acá con un mensaje para el usuario

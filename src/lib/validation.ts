@@ -24,6 +24,8 @@ export const LIMITS = {
     coverLetter: 20_000,
     agentTokens: 10,
     agentTokenName: 100,
+    coverLetterTemplates: 20,
+    mediaAssets: 10,
 } as const;
 
 /** Resultado de las server actions cuyos errores esperados se muestran al usuario. */
@@ -178,6 +180,30 @@ export const positionTitlesSchema = z
         Array.from(new Set(titles.map((value) => value.trim().slice(0, LIMITS.title)).filter(Boolean)))
     )
     .refine((titles) => titles.length <= LIMITS.positions, `Podés guardar hasta ${LIMITS.positions} puestos.`);
+
+export const answerTemplateSchema = z.object({
+    question: z.string().trim().min(1, "La pregunta no puede estar vacía.").max(LIMITS.question, "La pregunta es demasiado larga."),
+    answer: z.string().trim().min(1, "La respuesta no puede estar vacía.").max(LIMITS.answer, "La respuesta es demasiado larga."),
+    tags: z.unknown().optional().transform((value) => sanitizeKeywords(value ?? [], LIMITS.templateTags)),
+    language: optionalText(10),
+});
+
+export const coverLetterTemplateSchema = z.object({
+    name: z.string().trim().min(1, "Poné un nombre para reconocer la carta.").max(LIMITS.title),
+    text: z.string().trim().min(1, "La carta no puede estar vacía.").max(LIMITS.coverLetter, "La carta es demasiado larga."),
+});
+
+export const mediaAssetSchema = z.object({
+    name: z.string().trim().min(1, "Poné un nombre.").max(LIMITS.title),
+    url: z.string().transform((value, ctx) => {
+        const link = normalizeLink(value);
+        if (!link) {
+            ctx.addIssue({ code: "custom", message: "El link debe ser una dirección web válida (http o https)." });
+            return z.NEVER;
+        }
+        return link;
+    }),
+});
 
 /** Primer mensaje de error de un safeParse fallido, para mostrar al usuario. */
 export function firstIssueMessage(error: z.ZodError): string {

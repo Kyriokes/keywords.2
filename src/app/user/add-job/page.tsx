@@ -8,12 +8,22 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Label } from "@/components/ui/label";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { processJobApplication } from "@/lib/ia/controller";
 import { getMyQuotaStatus } from "@/actions/quota-actions";
 import { toast } from "sonner";
 import { Check, Loader2, Minus } from "lucide-react";
 import { summarizeKeywords } from "@/lib/stats/keywordAnalysis";
 import { useKeywordInsights } from "@/lib/stats/useKeywordInsights";
+
+// Qué pasa con la oferta al guardarla
+const INTENTS = {
+    APPLIED: { label: "Ya me postulé", status: "APPLIED" },
+    CLAUDE: { label: "Que la complete Claude (formulario externo)", status: "APPROVED" },
+    SAVED: { label: "Guardar para después", status: "SAVED" },
+} as const;
+
+type Intent = keyof typeof INTENTS;
 
 interface QuotaStatus {
     used: number;
@@ -29,6 +39,9 @@ export default function AddJobPage() {
 
     const [rawText, setRawText] = useState("");
     const [link, setLink] = useState("");
+    const [company, setCompany] = useState("");
+    const [intent, setIntent] = useState<Intent>("APPLIED");
+    const [applyUrl, setApplyUrl] = useState("");
     const [isProcessing, setIsProcessing] = useState(false);
     const [isHydrating, setIsHydrating] = useState(true);
     const [quota, setQuota] = useState<QuotaStatus | null>(null);
@@ -131,8 +144,13 @@ export default function AddJobPage() {
                     positionId: undefined,
                     role: aiResponse.rol,
                     seniority: aiResponse.seniority,
-                    link: link.trim()
+                    link: link.trim(),
+                    company: company.trim() || undefined,
+                    // Sin link propio del formulario, Claude usa el de la publicación
+                    applyUrl: intent === "CLAUDE" ? applyUrl.trim() || undefined : undefined,
+                    applyMode: intent === "CLAUDE" ? "EXTERNAL_FORM" : undefined
                 },
+                status: INTENTS[intent].status,
                 unverifiedWords: aiResponse.palabrasClave.filter(k => k.verificada === false).map(k => k.nombre),
                 providerUsed: provider,
                 excludedProviders: []
@@ -141,6 +159,8 @@ export default function AddJobPage() {
             toast.info("Oferta procesada. Revisá el resultado.");
             setRawText("");
             setLink("");
+            setCompany("");
+            setApplyUrl("");
 
             // Actualizar quota local después de un uso exitoso
             setQuota(prev => prev && !prev.isAdmin
@@ -173,6 +193,48 @@ export default function AddJobPage() {
                             onChange={(e) => setLink(e.target.value)}
                         />
                     </div>
+
+                    <div className="grid gap-4 sm:grid-cols-2">
+                        <div className="space-y-2">
+                            <Label htmlFor="jobCompany">Empresa (opcional)</Label>
+                            <Input
+                                id="jobCompany"
+                                placeholder="Ej: Acme"
+                                value={company}
+                                onChange={(e) => setCompany(e.target.value)}
+                            />
+                        </div>
+                        <div className="space-y-2">
+                            <Label htmlFor="jobIntent">¿Qué hacemos con esta oferta?</Label>
+                            <Select value={intent} onValueChange={(value) => setIntent(value as Intent)}>
+                                <SelectTrigger id="jobIntent" className="w-full">
+                                    <SelectValue />
+                                </SelectTrigger>
+                                <SelectContent>
+                                    {(Object.keys(INTENTS) as Intent[]).map((key) => (
+                                        <SelectItem key={key} value={key}>
+                                            {INTENTS[key].label}
+                                        </SelectItem>
+                                    ))}
+                                </SelectContent>
+                            </Select>
+                        </div>
+                    </div>
+
+                    {intent === "CLAUDE" && (
+                        <div className="space-y-2">
+                            <Label htmlFor="jobApplyUrl">Link del formulario de postulación</Label>
+                            <Input
+                                id="jobApplyUrl"
+                                placeholder="https://... (si la publicación te lleva a otro portal)"
+                                value={applyUrl}
+                                onChange={(e) => setApplyUrl(e.target.value)}
+                            />
+                            <p className="text-xs text-muted-foreground">
+                                Queda aprobada en tu cola. Claude la completa cuando le digas &quot;postulá mi cola&quot; y te pide confirmación antes de enviar. Las de Easy Apply de LinkedIn enviálas vos.
+                            </p>
+                        </div>
+                    )}
 
                     <div className="space-y-2">
                         <Label htmlFor="jobText">Texto de la oferta (título y descripción)</Label>
