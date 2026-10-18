@@ -14,7 +14,7 @@ interface AgentConnectProps {
 }
 
 // Repo público con el plugin (skill /postular) que se instala en Claude Code
-const PLUGIN_REPO = 'Kyriokes/KW-Cloude-Plugin'
+const PLUGIN_REPO = 'Kyriokes/KW-Claude-Plugin'
 
 const dateFormatter =new Intl.DateTimeFormat('es', { dateStyle: 'medium' })
 
