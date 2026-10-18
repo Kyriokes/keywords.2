@@ -5,6 +5,7 @@ import type { Prisma } from "@prisma/client";
 import { isProviderId, type ProviderId } from "@/lib/ia/providers/ids";
 import { detectKeywords, resolveTerms } from "@/lib/keywords/dictionary";
 import { classifyJobTitle } from "@/lib/positions/dictionary";
+import { computeMatchScore } from "./prepare";
 import { LIMITS, createApplicationSchema, firstIssueMessage, type ActionResult } from "@/lib/validation";
 
 export const applicationInclude = {
@@ -87,6 +88,12 @@ export async function createApplicationForProfile(
 
     const classified = await classifyJobTitle(input.jobTitle);
 
+    // Si no viene un score de afuera, se calcula: keywords de la oferta que ya están en el CV activo
+    const cvKeywords = activeCv
+        ? await prisma.cVKeyword.findMany({ where: { cvId: activeCv.id }, select: { keywordId: true } })
+        : [];
+    const score = input.score ?? computeMatchScore(keywordIds, cvKeywords.map((k) => k.keywordId)) ?? undefined;
+
     const application = await prisma.jobApplication.create({
         data: {
             profileId,
@@ -103,7 +110,7 @@ export async function createApplicationForProfile(
             applyUrl: input.applyUrl,
             applyMode: input.applyMode,
             externalId: input.externalId,
-            score: input.score,
+            score,
             notes: input.notes,
 
             // Relations

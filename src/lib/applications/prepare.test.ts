@@ -1,0 +1,43 @@
+import { describe, expect, it } from "vitest";
+import { buildCoverLetterPrompt, cleanCoverLetter, computeMatchScore } from "./prepare";
+
+const LETTER = "Estimado equipo:\n\n" + "Me interesa mucho el puesto y creo que mi experiencia encaja. ".repeat(6) + "\n\nSaludos,\nAna";
+
+describe("computeMatchScore", () => {
+    it("es el porcentaje de keywords de la oferta que están en el CV", () => {
+        expect(computeMatchScore(["a", "b", "c", "d"], ["a", "c", "z"])).toBe(50);
+        expect(computeMatchScore(["a", "a", "b"], ["a"])).toBe(50);
+    });
+
+    it("devuelve null si falta la oferta o el CV para comparar", () => {
+        expect(computeMatchScore([], ["a"])).toBeNull();
+        expect(computeMatchScore(["a"], [])).toBeNull();
+    });
+});
+
+describe("buildCoverLetterPrompt", () => {
+    const base = { jobTitle: "Frontend Developer", jobDescription: "React y TypeScript", cvText: "Ana, 5 años con React" };
+
+    it("incluye la carta modelo solo si existe", () => {
+        expect(buildCoverLetterPrompt(base)).not.toContain("###MODELO###");
+        expect(buildCoverLetterPrompt({ ...base, template: "Hola, soy Ana..." })).toContain("Hola, soy Ana...");
+    });
+
+    it("recorta la descripción y el CV largos", () => {
+        const prompt = buildCoverLetterPrompt({ ...base, jobDescription: "x".repeat(20_000), cvText: "y".repeat(20_000) });
+        expect(prompt.length).toBeLessThan(14_000);
+    });
+});
+
+describe("cleanCoverLetter", () => {
+    it("saca la introducción del modelo y los bloques de código", () => {
+        expect(cleanCoverLetter(`Aquí está tu carta:\n${LETTER}`, 20_000)).toBe(LETTER);
+        expect(cleanCoverLetter("```\n" + LETTER + "\n```", 20_000)).toBe(LETTER);
+        expect(cleanCoverLetter(`<think>pensando</think>\n${LETTER}`, 20_000)).toBe(LETTER);
+    });
+
+    it("descarta respuestas cortas o con marcadores sin completar", () => {
+        expect(cleanCoverLetter("Hola", 20_000)).toBeNull();
+        expect(cleanCoverLetter(LETTER.replace("Estimado equipo", "Estimado equipo de [Empresa]"), 20_000)).toBeNull();
+    });
+});

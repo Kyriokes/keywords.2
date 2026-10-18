@@ -26,6 +26,7 @@ export const LIMITS = {
     agentTokenName: 100,
     coverLetterTemplates: 20,
     mediaAssets: 10,
+    coverLettersPerDay: 30,
 } as const;
 
 /** Resultado de las server actions cuyos errores esperados se muestran al usuario. */

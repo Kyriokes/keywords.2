@@ -1,13 +1,19 @@
 'use client'
 
 import { useState } from 'react'
-import { Check, ExternalLink, RotateCcw, Send, X } from 'lucide-react'
+import { Check, ExternalLink, Loader2, RotateCcw, Send, Sparkles, X } from 'lucide-react'
 import { toast } from 'sonner'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
+import { Textarea } from '@/components/ui/textarea'
 import { updateApplicationStatus } from '@/actions/application-actions'
-import type { QueueData, QueueItem } from '@/actions/queue-actions'
+import {
+    generateApplicationCoverLetter,
+    saveApplicationCoverLetter,
+    type QueueData,
+    type QueueItem,
+} from '@/actions/queue-actions'
 import type { ApplicationStatusValue } from '@/lib/validation'
 
 const APPLY_MODE_LABELS: Record<string, string> = {
@@ -41,9 +47,76 @@ const ACTIONS: Record<string, StatusAction[]> = {
     ],
 }
 
+/** Carta de una oferta pendiente: la que Claude va a usar. Se puede generar con la IA y editar. */
+function CoverLetterEditor({ item }: { item: QueueItem }) {
+    const [saved, setSaved] = useState(item.coverLetter ?? '')
+    const [text, setText] = useState(saved)
+    const [busy, setBusy] = useState<'save' | 'generate' | null>(null)
+
+    const generate = async () => {
+        if (saved && !window.confirm('¿Reemplazar la carta actual por una nueva?')) return
+        setBusy('generate')
+        try {
+            const result = await generateApplicationCoverLetter(item.id)
+            if (!result.ok) return void toast.error(result.message)
+            setSaved(result.data.text)
+            setText(result.data.text)
+        } catch {
+            toast.error('No se pudo generar la carta')
+        } finally {
+            setBusy(null)
+        }
+    }
+
+    const save = async () => {
+        setBusy('save')
+        try {
+            const result = await saveApplicationCoverLetter(item.id, text)
+            if (!result.ok) return void toast.error(result.message)
+            setSaved(text.trim())
+            toast.success('Carta guardada')
+        } catch {
+            toast.error('No se pudo guardar la carta')
+        } finally {
+            setBusy(null)
+        }
+    }
+
+    return (
+        <details className="text-sm">
+            <summary className="cursor-pointer font-medium">
+                Carta de presentación {saved ? '' : '(sin generar)'}
+            </summary>
+            <div className="mt-3 space-y-2">
+                {saved || text ? (
+                    <Textarea value={text} onChange={(event) => setText(event.target.value)} className="min-h-48" />
+                ) : (
+                    <p className="text-muted-foreground">
+                        Todavía no hay carta. Se genera sola al aprobar la oferta, o generala ahora.
+                    </p>
+                )}
+                <div className="flex flex-wrap gap-2">
+                    {text.trim() !== saved && text.trim() && (
+                        <Button size="sm" onClick={save} disabled={busy !== null}>
+                            {busy === 'save' && <Loader2 className="size-4 animate-spin" />}
+                            Guardar carta
+                        </Button>
+                    )}
+                    <Button size="sm" variant="outline" onClick={generate} disabled={busy !== null}>
+                        {busy === 'generate' ? <Loader2 className="size-4 animate-spin" /> : <Sparkles className="size-4" />}
+                        {saved ? 'Regenerar con IA' : 'Generar con IA'}
+                    </Button>
+                </div>
+            </div>
+        </details>
+    )
+}
+
 function QueueCard({ item, onStatus }: { item: QueueItem; onStatus?: (item: QueueItem, status: ApplicationStatusValue) => void }) {
     const formUrl = item.applyUrl ?? item.link
-    const hasRecord = item.answers.length > 0 || !!item.coverLetter || !!item.cvVariantName
+    // En las pendientes la carta se edita aparte; en las enviadas es parte de lo que se envió
+    const isPending = !!onStatus
+    const hasRecord = item.answers.length > 0 || !!item.cvVariantName || (!isPending && !!item.coverLetter)
 
     return (
         <li className="space-y-3 rounded-lg border bg-card p-4 text-card-foreground shadow-sm">
@@ -95,7 +168,7 @@ function QueueCard({ item, onStatus }: { item: QueueItem; onStatus?: (item: Queu
                                 ))}
                             </dl>
                         )}
-                        {item.coverLetter && (
+                        {item.coverLetter && !isPending && (
                             <div className="space-y-1">
                                 <p className="text-muted-foreground">Carta de presentación</p>
                                 <p className="whitespace-pre-wrap rounded-md border p-3">{item.coverLetter}</p>
@@ -104,6 +177,8 @@ function QueueCard({ item, onStatus }: { item: QueueItem; onStatus?: (item: Queu
                     </div>
                 </details>
             )}
+
+            {isPending && <CoverLetterEditor item={item} />}
 
             {onStatus && ACTIONS[item.status] && (
                 <div className="flex flex-wrap gap-2">

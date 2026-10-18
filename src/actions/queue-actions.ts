@@ -2,6 +2,9 @@
 
 import { auth } from "@/auth"
 import prisma from "@/lib/prisma"
+import { revalidatePath } from "next/cache"
+import { generateCoverLetterForApplication } from "@/lib/applications/coverLetter"
+import { LIMITS, type ActionResult } from "@/lib/validation"
 
 /** Estados que se ven en la cola de postulaciones asistidas. */
 const QUEUE_STATUSES = ["READY", "APPROVED", "NEEDS_USER"] as const
@@ -29,6 +32,46 @@ export interface QueueData {
   pending: QueueItem[]
   /** Postulaciones que envió Claude (tienen fecha de envío o respuestas registradas). */
   submitted: QueueItem[]
+}
+
+async function requireProfileId(): Promise<string> {
+  const session = await auth()
+  if (!session?.user?.id) throw new Error("Unauthorized")
+  const profile = await prisma.profile.findUnique({
+    where: { userId: session.user.id },
+    select: { id: true }
+  })
+  if (!profile) throw new Error("Profile not found")
+  return profile.id
+}
+
+/** Genera (o regenera) con la IA el borrador de la carta de una oferta. */
+export async function generateApplicationCoverLetter(id: string): Promise<ActionResult<{ text: string }>> {
+  const profileId = await requireProfileId()
+  const result = await generateCoverLetterForApplication(profileId, id, { overwrite: true })
+  if (result.ok) revalidatePath("/user/queue")
+  return result
+}
+
+/** Guarda la carta editada por el usuario; es la que Claude va a usar al postular. */
+export async function saveApplicationCoverLetter(id: string, text: string): Promise<ActionResult> {
+  const profileId = await requireProfileId()
+  const trimmed = text.trim()
+  if (!trimmed) return { ok: false, code: "INVALID_INPUT", message: "La carta no puede estar vacía." }
+  if (trimmed.length > LIMITS.coverLetter) {
+    return { ok: false, code: "INVALID_INPUT", message: "La carta es demasiado larga." }
+  }
+
+  const application = await prisma.jobApplication.findFirst({ where: { id, profileId }, select: { id: true } })
+  if (!application) return { ok: false, code: "NOT_FOUND", message: "La oferta ya no existe." }
+
+  await prisma.coverLetter.upsert({
+    where: { applicationId: id },
+    create: { profileId, applicationId: id, text: trimmed },
+    update: { text: trimmed }
+  })
+  revalidatePath("/user/queue")
+  return { ok: true, data: undefined }
 }
 
 export async function getQueue(): Promise<QueueData> {
