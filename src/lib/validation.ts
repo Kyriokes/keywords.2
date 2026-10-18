@@ -12,6 +12,18 @@ export const LIMITS = {
     cvKeywords: 2_000,
     cvsPerProfile: 20,
     positions: 10,
+    company: 200,
+    source: 50,
+    externalId: 200,
+    notes: 5_000,
+    question: 1_000,
+    answer: 10_000,
+    answersPerApplication: 100,
+    answerTemplates: 300,
+    templateTags: 10,
+    coverLetter: 20_000,
+    agentTokens: 10,
+    agentTokenName: 100,
 } as const;
 
 /** Resultado de las server actions cuyos errores esperados se muestran al usuario. */
@@ -79,7 +91,17 @@ const optionalLink = z
         return link;
     });
 
-export const APPLICATION_STATUSES = ["APPLIED", "INTERVIEW", "SAVED", "REJECTED"] as const;
+export const APPLICATION_STATUSES = [
+    "APPLIED",
+    "INTERVIEW",
+    "SAVED",
+    "REJECTED",
+    // Postulación asistida: en cola, aprobada para enviar, descartada o trabada esperando al usuario
+    "READY",
+    "APPROVED",
+    "SKIPPED",
+    "NEEDS_USER",
+] as const;
 
 export type ApplicationStatusValue = typeof APPLICATION_STATUSES[number];
 
@@ -106,6 +128,17 @@ export function parseApplicationDate(value: unknown, now: Date = new Date()): Da
     return date;
 }
 
+/** Quién envía la postulación: el usuario a mano (Easy Apply) o el agente en un formulario externo. */
+export const APPLY_MODES = ["EASY_APPLY_MANUAL", "EXTERNAL_FORM", "UNSUPPORTED"] as const;
+
+export type ApplyMode = typeof APPLY_MODES[number];
+
+const optionalText = (max: number) =>
+    z
+        .string()
+        .optional()
+        .transform((value) => value?.trim().slice(0, max) || undefined);
+
 export const createApplicationSchema = z.object({
     jobTitle: title,
     jobDescription: z
@@ -120,6 +153,13 @@ export const createApplicationSchema = z.object({
     // Solo los manda la importación de un respaldo, para no perder el historial
     date: z.unknown().optional().transform((value) => parseApplicationDate(value)),
     status: z.unknown().optional().transform(parseApplicationStatus),
+    company: optionalText(LIMITS.company),
+    source: optionalText(LIMITS.source),
+    applyUrl: optionalLink,
+    applyMode: z.enum(APPLY_MODES).optional(),
+    externalId: optionalText(LIMITS.externalId),
+    score: z.number().int().min(0).max(100).optional(),
+    notes: optionalText(LIMITS.notes),
 });
 
 export const uploadCvSchema = z.object({

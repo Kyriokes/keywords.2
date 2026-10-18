@@ -36,6 +36,10 @@ const STATUS_OPTIONS: { value: ApplicationStatus; label: string }[] = [
   { value: "INTERVIEW", label: "Entrevista" },
   { value: "SAVED", label: "Guardada" },
   { value: "REJECTED", label: "Rechazada" },
+  { value: "READY", label: "En cola" },
+  { value: "APPROVED", label: "Aprobada" },
+  { value: "NEEDS_USER", label: "Requiere acción" },
+  { value: "SKIPPED", label: "Descartada" },
 ];
 
 const VALID_STATUS_VALUES = new Set<ApplicationStatus>(STATUS_OPTIONS.map((option) => option.value));
@@ -44,6 +48,10 @@ const STATUS_COLOR_CLASS: Record<ApplicationStatus, string> = {
   INTERVIEW: "text-amber-600",
   SAVED: "text-muted-foreground",
   REJECTED: "text-red-600",
+  READY: "text-muted-foreground",
+  APPROVED: "text-primary",
+  NEEDS_USER: "text-amber-600",
+  SKIPPED: "text-muted-foreground",
 };
 
 interface ApplicationsTableProps {

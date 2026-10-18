@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import Link from "next/link";
 import { auth } from "@/auth";
 import { CvDropBox } from "@/components/CvDropBox";
 import { CvList } from "@/components/CvList";
@@ -33,6 +34,16 @@ export default async function ProfilePage() {
                     </p>
                     <DesiredPositions />
                 </div>
+            </div>
+
+            <div className="space-y-3">
+                <h2 className="text-2xl font-semibold tracking-tight">Postular con Claude Code</h2>
+                <p className="text-muted-foreground">
+                    Conectá Claude Code para que complete los formularios de tus ofertas aprobadas y registre acá lo que envió.
+                </p>
+                <Link href="/user/connect" className="inline-block font-medium text-primary underline-offset-4 hover:underline">
+                    Conectar Claude Code →
+                </Link>
             </div>
         </div>
     );

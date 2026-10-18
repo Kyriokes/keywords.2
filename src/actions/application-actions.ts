@@ -2,19 +2,15 @@
 
 import { auth } from "@/auth"
 import prisma from "@/lib/prisma"
-import type { Prisma } from "@prisma/client"
 import { revalidatePath } from "next/cache"
 import { providerManager } from "@/lib/ia/providerManager"
-import { isProviderId } from "@/lib/ia/providers/ids"
-import { detectKeywords, keywordName, resolveTerms } from "@/lib/keywords/dictionary"
-import { classifyJobTitle } from "@/lib/positions/dictionary"
+import { keywordName } from "@/lib/keywords/dictionary"
 import {
-  LIMITS,
-  createApplicationSchema,
-  firstIssueMessage,
-  parseApplicationStatus,
-  type ActionResult,
-} from "@/lib/validation"
+  applicationInclude,
+  createApplicationForProfile,
+  type ApplicationWithRelations,
+} from "@/lib/applications/create"
+import { parseApplicationStatus, type ActionResult } from "@/lib/validation"
 
 export interface CreateApplicationData {
   jobTitle: string
@@ -29,16 +25,6 @@ export interface CreateApplicationData {
   date?: string
   status?: string
 }
-
-const applicationInclude = {
-  keywords: {
-    include: { keyword: true }
-  },
-  position: true,
-  canonicalPosition: true
-} satisfies Prisma.JobApplicationInclude
-
-type ApplicationWithRelations = Prisma.JobApplicationGetPayload<{ include: typeof applicationInclude }>
 
 // Formato que espera el store del cliente
 function toStoreApplication(app: ApplicationWithRelations) {
@@ -64,100 +50,15 @@ export async function createApplication(
   const session = await auth()
   if (!session?.user?.id) throw new Error("Unauthorized")
 
-  const parsed = createApplicationSchema.safeParse(data)
-  if (!parsed.success) {
-    return { ok: false, code: "INVALID_INPUT", message: firstIssueMessage(parsed.error) }
-  }
-  const input = parsed.data
-  const provider = isProviderId(input.provider) ? input.provider : undefined
-
   const profile = await prisma.profile.findUnique({
     where: { userId: session.user.id }
   })
 
   if (!profile) throw new Error("Profile not found")
 
-  const total = await prisma.jobApplication.count({
-    where: { profileId: profile.id }
-  })
-  if (total >= LIMITS.applicationsPerProfile) {
-    return {
-      ok: false,
-      code: "LIMIT_REACHED",
-      message: `Alcanzaste el máximo de ${LIMITS.applicationsPerProfile} postulaciones.`
-    }
-  }
-
-  // Check for duplicates by link
-  if (input.link) {
-    const exists = await prisma.jobApplication.findFirst({
-      where: {
-        profileId: profile.id,
-        link: { equals: input.link, mode: 'insensitive' }
-      },
-      select: { id: true }
-    })
-    if (exists) {
-      return { ok: false, code: "DUPLICATE_LINK", message: "Esta oferta ya existe (link duplicado)." }
-    }
-  }
-
-  // Find related Position if exists
-  let positionId: string | undefined
-  if (input.positionTitle) {
-    const position = await prisma.position.findFirst({
-        where: {
-            profileId: profile.id,
-            title: input.positionTitle
-        }
-    })
-    positionId = position?.id
-  }
-
-  // Find active CV
-  const activeCv = await prisma.cV.findFirst({
-      where: {
-          profileId: profile.id,
-          isPrimary: true
-      }
-  })
-
-  // Keywords: los términos recibidos pasan por el diccionario. Si la lista no fue revisada
-  // (postulaciones importadas) se suman los que el diccionario detecta en la descripción;
-  // si fue revisada no, porque volvería a agregar lo que el usuario quitó.
-  const detected = input.reviewed ? [] : await detectKeywords(input.jobDescription)
-  const keywordIds = Array.from(
-    new Set([...(await resolveTerms(input.detectedWords)), ...detected.map((k) => k.id)])
-  ).slice(0, LIMITS.applicationKeywords)
-
-  const classified = await classifyJobTitle(input.jobTitle)
-
-  // Create Application
-  const newApp = await prisma.jobApplication.create({
-    data: {
-      profileId: profile.id,
-      jobTitle: input.jobTitle,
-      jobDescription: input.jobDescription,
-      link: input.link,
-      provider,
-      // Sin valor, la base pone la fecha de hoy y el estado inicial
-      date: input.date,
-      status: input.status,
-
-      // Relations
-      positionId: positionId,
-      originalPositionTitle: input.positionTitle, // Snapshot History
-      canonicalPositionId: classified.roleId,
-      seniority: classified.seniority,
-      cvId: activeCv?.id,
-
-      // Keywords Relation
-      keywords: {
-        create: keywordIds.map(keywordId => ({ keywordId }))
-      }
-    },
-    include: applicationInclude
-  })
+  const result = await createApplicationForProfile(profile.id, data)
+  if (!result.ok) return result
+  const { application, provider } = result.data
 
   // Log acceptance if provider was used
   if (provider) {
@@ -167,7 +68,7 @@ export async function createApplication(
 
   revalidatePath('/user/dashboard')
 
-  return { ok: true, data: toStoreApplication(newApp) }
+  return { ok: true, data: toStoreApplication(application) }
 }
 
 export async function getApplications() {

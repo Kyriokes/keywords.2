@@ -1,7 +1,9 @@
 import { create } from 'zustand';
 import { createApplication, getApplications, deleteApplication, clearApplications, updateApplicationStatus as updateApplicationStatusAction } from '@/actions/application-actions';
 
-export type ApplicationStatus = 'APPLIED' | 'INTERVIEW' | 'SAVED' | 'REJECTED';
+import type { ApplicationStatusValue } from '@/lib/validation';
+
+export type ApplicationStatus = ApplicationStatusValue;
 
 export interface JobApplication {
   id: string;

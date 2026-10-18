@@ -49,6 +49,9 @@ model User {
   transactions PaymentTransaction[]
   quests       UserQuest[]
 
+  // Tokens para que un agente externo (Claude Code) use la cuenta
+  agentTokens AgentToken[]
+
   createdAt         DateTime            @default(now())
   updatedAt         DateTime            @updatedAt
   MappingSuggestion MappingSuggestion[]
@@ -66,6 +69,12 @@ model Profile {
   applications JobApplication[]
   positions    Position[]
   stats        ProviderStats[]
+
+  // Postulaciones asistidas por un agente
+  cvVariants      CvVariant[]
+  coverLetters    CoverLetter[]
+  answerTemplates AnswerTemplate[]
+  mediaAssets     MediaAsset[]
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -131,6 +140,9 @@ model CV {
   // Relación opcional: Aplicaciones hechas específicamente con este CV
   applications JobApplication[]
 
+  // Versiones adaptadas a ofertas puntuales que parten de este CV
+  variants CvVariant[]
+
   @@index([profileId])
 }
 
@@ -164,10 +176,28 @@ model JobApplication {
   // Palabras clave detectadas en la descripción del trabajo
   keywords JobApplicationKeyword[]
 
+  // Postulación asistida: de dónde salió la oferta y dónde se completa el formulario
+  company    String?
+  source     String? // Origen de la oferta (manual, linkedin, greenhouse...)
+  applyUrl   String? // Formulario de postulación, si es distinto de `link` (la publicación)
+  applyMode  String? // Quién envía; valores en src/lib/validation.ts (APPLY_MODES)
+  externalId String? // Id de la oferta en la fuente, para no importarla dos veces
+  score      Int? // Qué tan bien encaja con el CV, de 0 a 100
+  appliedAt  DateTime? // Cuándo se envió de verdad (no cuándo se cargó)
+  notes      String?   @db.Text
+
+  // Versión del CV adaptada para esta oferta, si se usó una
+  cvVariantId String?
+  cvVariant   CvVariant? @relation(fields: [cvVariantId], references: [id], onDelete: SetNull)
+
+  coverLetter CoverLetter?
+  answers     ApplicationAnswer[]
+
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
   @@index([profileId])
+  @@index([profileId, status])
   @@index([jobTitle]) // Índice para búsquedas rápidas de ofertas por título
 }
 
@@ -184,6 +214,110 @@ model Position {
 
   @@unique([profileId, title]) // Un perfil no debería tener duplicada la misma posición deseada
   @@index([title]) // Vital para agrupar estadísticas globales por puesto
+}
+
+// ==========================================
+// MÓDULO 2B: POSTULACIONES ASISTIDAS POR UN AGENTE
+// ==========================================
+
+// CV adaptado a una oferta. Se guarda aparte para saber qué versión se mandó a cada empresa.
+model CvVariant {
+  id        String   @id @default(cuid())
+  name      String
+  text      String   @db.Text
+  pdfUrl    String?
+  createdAt DateTime @default(now())
+
+  profileId String
+  profile   Profile @relation(fields: [profileId], references: [id], onDelete: Cascade)
+
+  baseCvId String?
+  baseCv   CV?     @relation(fields: [baseCvId], references: [id], onDelete: SetNull)
+
+  applications JobApplication[]
+
+  @@index([profileId])
+}
+
+// Carta de presentación. Sin postulación es una plantilla; con postulación, la que se envió.
+model CoverLetter {
+  id        String   @id @default(cuid())
+  name      String?
+  text      String   @db.Text
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  profileId String
+  profile   Profile @relation(fields: [profileId], references: [id], onDelete: Cascade)
+
+  applicationId String?         @unique
+  application   JobApplication? @relation(fields: [applicationId], references: [id], onDelete: Cascade)
+
+  @@index([profileId])
+}
+
+// Respuesta tipo a una pregunta frecuente de los formularios (pretensión salarial, visa, preaviso...)
+model AnswerTemplate {
+  id        String   @id @default(cuid())
+  question  String
+  answer    String   @db.Text
+  tags      String[]
+  language  String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  profileId String
+  profile   Profile @relation(fields: [profileId], references: [id], onDelete: Cascade)
+
+  usedIn ApplicationAnswer[]
+
+  @@index([profileId])
+}
+
+// Lo que se respondió en el formulario de una postulación
+model ApplicationAnswer {
+  id        String   @id @default(cuid())
+  question  String
+  answer    String   @db.Text
+  createdAt DateTime @default(now())
+
+  applicationId String
+  application   JobApplication @relation(fields: [applicationId], references: [id], onDelete: Cascade)
+
+  templateId String?
+  template   AnswerTemplate? @relation(fields: [templateId], references: [id], onDelete: SetNull)
+
+  @@index([applicationId])
+}
+
+// Archivos reutilizables para postular, como el video de presentación
+model MediaAsset {
+  id        String   @id @default(cuid())
+  kind      String // VIDEO, etc.
+  name      String
+  url       String
+  createdAt DateTime @default(now())
+
+  profileId String
+  profile   Profile @relation(fields: [profileId], references: [id], onDelete: Cascade)
+
+  @@index([profileId])
+}
+
+// Token personal para conectar un agente (Claude Code). Solo se guarda el hash.
+model AgentToken {
+  id         String    @id @default(cuid())
+  name       String
+  tokenHash  String    @unique
+  prefix     String // Primeros caracteres, para reconocerlo en la lista
+  lastUsedAt DateTime?
+  revokedAt  DateTime?
+  createdAt  DateTime  @default(now())
+
+  userId String
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
 }
 
 // ==========================================
