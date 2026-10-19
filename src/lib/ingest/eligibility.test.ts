@@ -101,6 +101,20 @@ describe("checkEligibility", () => {
         ]);
     });
 
+    it("muestra solo el país en el permiso de trabajo", () => {
+        const description = "You must be authorized to work in the United States without current or future sponsorship.";
+        expect(checkEligibility(offer({ source: "remotive", description }), rules).blockers).toEqual([
+            "Pide permiso de trabajo en United States",
+        ]);
+    });
+
+    it("con una ubicación de afuera da un solo motivo, sin la modalidad", () => {
+        const blockers = (location: string) => checkEligibility(offer({ source: "getonbrd", location }), rules).blockers;
+        expect(blockers("Híbrido · Santiago, Chile")).toEqual(["Solo para Santiago, Chile"]);
+        expect(blockers("Presencial · Santiago, Chile")).toEqual(["Solo para Santiago, Chile"]);
+        expect(blockers("Remoto desde Colombia, Costa Rica")).toEqual(["Solo para Colombia, Costa Rica"]);
+    });
+
     it("descarta las que piden mudarse", () => {
         const description = "Hybrid position in Madrid. Willingness to relocate is required.";
         expect(checkEligibility(offer({ description }), rules).blockers).toContain("Pide mudanza");

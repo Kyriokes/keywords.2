@@ -139,14 +139,19 @@ function locationBlocker(location: string | null): string | null {
     const text = normalize(location);
     if (ALLOWED_PLACES.test(text)) return null;
     const places = text.replace(MODE_WORDS, " ").replace(/[^a-z]+/g, " ").trim();
-    return places ? `Solo para ${location.trim()}` : null;
+    // La modalidad que antepone Get on Board ("Híbrido · Santiago, Chile") no aporta al motivo
+    const shown = location.trim().replace(/^(remoto desde|h[ií]brido\s*·|presencial\s*·)\s*/i, "");
+    return places ? `Solo para ${shown}` : null;
 }
+
+/** Corta el lugar donde empieza el resto de la frase: "United States without current..." → "United States". */
+const trimPlace = (place: string) => place.split(/\s+(?:without|and|or|with|for|who|that|on|to|at|y|o|sin|con|para)\s+/i)[0].trim();
 
 /** Lugar que la oferta exige (vivir o tener permiso de trabajo), si no es de la región. */
 function requiredPlaceOutsideRegion(patterns: RegExp[], text: string): string | null {
     for (const pattern of patterns) {
         const place = text.match(pattern)?.[1]?.trim();
-        if (place && !ALLOWED_PLACES.test(normalize(place))) return place;
+        if (place && !ALLOWED_PLACES.test(normalize(place))) return trimPlace(place);
     }
     return null;
 }
@@ -184,9 +189,10 @@ export function checkEligibility(offer: OfferForEligibility, rules: EligibilityR
 
     if (RELOCATION.test(body)) blockers.push("Pide mudanza");
 
-    if (workMode && !rules.workModes.includes(workMode)) {
+    // Si la ubicación ya es de afuera, la modalidad no agrega nada al motivo
+    if (!outsideLocation && workMode && !rules.workModes.includes(workMode)) {
         blockers.push(MODE_BLOCKERS[workMode]);
-    } else if (workMode === "HYBRID" || workMode === "ONSITE") {
+    } else if (!outsideLocation && (workMode === "HYBRID" || workMode === "ONSITE")) {
         const where = normalize(`${offer.location ?? ""} ${offer.title} ${offer.description.slice(0, 4_000)}`);
         if (!BUENOS_AIRES.test(where)) blockers.push(`${MODE_SUMMARY[workMode]} fuera de Buenos Aires`);
     }

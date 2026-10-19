@@ -14,9 +14,14 @@ const fetchAggregator = vi.hoisted(() => vi.fn());
 
 vi.mock("@/lib/prisma", () => ({ default: db }));
 vi.mock("@/lib/applications/create", () => ({ createApplicationForProfile: create }));
-// Cada keyword de la descripción es una palabra en mayúsculas: "REACT NODE" → react, node
+// Cada keyword es una palabra en mayúsculas: "REACT NODE" → react, node. Las que terminan en "_TOOL" son herramientas.
 vi.mock("@/lib/keywords/dictionary", () => ({
-    detectKeywords: async (text: string) => (text.match(/\b[A-Z]{2,}\b/g) ?? []).map((word) => ({ id: word.toLowerCase() })),
+    detectKeywords: async (text: string) =>
+        (text.match(/\b[A-Z][A-Z_]+\b/g) ?? []).map((word) => ({
+            id: word.toLowerCase(),
+            name: word,
+            category: word.endsWith("_TOOL") ? "HERRAMIENTA" : "LENGUAJE",
+        })),
 }));
 vi.mock("@/lib/positions/dictionary", () => ({
     classifyJobTitle: async (title: string) => ({
@@ -99,5 +104,23 @@ describe("runJobSearch", () => {
         expect(create).not.toHaveBeenCalled();
         expect(result.decisions.filter((decision) => decision.status === "PASSES")).toHaveLength(2);
         expect(result.summary).toBe("4 ofertas revisadas, 4 de tus puestos, 2 descartadas por los filtros, 2 entrarían a la cola.");
+    });
+
+    it("descarta las que en el título piden tecnologías que no están en el CV", async () => {
+        fetchAggregator.mockResolvedValue([
+            job("5", { title: "GOLANG KUBERNETES Engineer" }),
+            job("6", { title: "Full Stack Developer (REACT / JAVA)" }),
+            job("7", { title: "Developer JIRA_TOOL" }),
+        ]);
+
+        const result = await runJobSearch("profile-1", settings, new Map(), { dryRun: true });
+
+        expect(result.decisions.map((decision) => [decision.externalId, decision.status, decision.reason])).toEqual([
+            ["remotive:5", "REJECTED", "El título pide GOLANG, KUBERNETES"],
+            // Con una de las tecnologías del título alcanza
+            ["remotive:6", "PASSES", null],
+            // Las herramientas no cuentan como stack
+            ["remotive:7", "PASSES", null],
+        ]);
     });
 });

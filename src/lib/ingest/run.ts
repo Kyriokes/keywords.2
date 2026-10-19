@@ -67,6 +67,9 @@ export interface SearchRunResult {
 // Lo que se muestra en "Probar filtros"; más que esto no se llega a revisar a mano
 const MAX_DECISIONS = 200;
 
+/** Categorías que forman el stack: si el título nombra alguna tecnología, al menos una tiene que estar en el CV. */
+const STACK_CATEGORIES = new Set<string>(["LENGUAJE", "FRAMEWORK", "DATOS", "CLOUD_DEVOPS"]);
+
 const ingestKey = (job: IngestedJob) => `${job.source}:${job.externalId}`;
 
 /** Reglas de los filtros a partir de lo guardado; un valor desconocido vuelve al de por defecto. */
@@ -157,6 +160,7 @@ export async function runJobSearch(
     const cvKeywordIds = (
         await prisma.cVKeyword.findMany({ where: { cvId: activeCv.id }, select: { keywordId: true } })
     ).map((keyword) => keyword.keywordId);
+    const cvKeywordSet = new Set(cvKeywordIds);
 
     // 3. Filtrar por puesto deseado, por los filtros y por score; lo que pasa entra a la cola
     const rules = toRules(settings);
@@ -191,6 +195,14 @@ export async function runJobSearch(
         );
         if (eligibility.blockers.length) {
             decide(job, { status: "REJECTED", reason: eligibility.blockers.join(" · "), score: null, summary: eligibility.summary });
+            continue;
+        }
+
+        // "Golang Kubernetes Engineer" puede dar match alto con una descripción corta: el título manda
+        const titleStack = (await detectKeywords(job.title)).filter((keyword) => STACK_CATEGORIES.has(keyword.category));
+        if (titleStack.length && !titleStack.some((keyword) => cvKeywordSet.has(keyword.id))) {
+            const reason = `El título pide ${titleStack.map((keyword) => keyword.name).join(", ")}`;
+            decide(job, { status: "REJECTED", reason, score: null, summary: eligibility.summary });
             continue;
         }
 
