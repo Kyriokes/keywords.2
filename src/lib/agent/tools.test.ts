@@ -13,6 +13,8 @@ const db = vi.hoisted(() => ({
 
 vi.mock("@/lib/prisma", () => ({ default: db }));
 vi.mock("@/lib/applications/create", () => ({ createApplicationForProfile: vi.fn() }));
+const positions = vi.hoisted(() => ({ getDesiredRolesForProfile: vi.fn(), saveDesiredRoles: vi.fn() }));
+vi.mock("@/lib/positions/save", () => positions);
 
 import { handleMcpMessage } from "./mcp";
 import { SERVER_INSTRUCTIONS, agentTools } from "./tools";
@@ -127,5 +129,35 @@ describe("agentTools", () => {
         expect(JSON.parse(result.text)).toEqual({ id: "tpl-1", updated: true });
         expect(db.answerTemplate.update.mock.calls[0][0].data.tags).toEqual(["salary"]);
         expect(db.answerTemplate.create).not.toHaveBeenCalled();
+    });
+
+    it("muestra los puestos deseados del perfil del token y los que se pueden elegir", async () => {
+        positions.getDesiredRolesForProfile.mockResolvedValue({
+            selected: ["Full Stack Developer"],
+            unrecognized: [],
+            available: ["Backend Developer", "Full Stack Developer"],
+        });
+
+        const result = await callTool("get_desired_positions", {});
+
+        expect(positions.getDesiredRolesForProfile).toHaveBeenCalledWith("profile-1");
+        expect(JSON.parse(result.text)).toEqual({ selected: ["Full Stack Developer"], available: ["Backend Developer", "Full Stack Developer"] });
+    });
+
+    it("guarda los puestos deseados en el perfil del token y avisa cuáles no reconoce", async () => {
+        positions.saveDesiredRoles.mockResolvedValue({ ok: true, data: { roles: ["Backend Developer"], dropped: ["Astronauta"] } });
+
+        const result = await callTool("set_desired_positions", { titles: ["Backend Developer", "Astronauta"] });
+
+        expect(positions.saveDesiredRoles).toHaveBeenCalledWith("profile-1", ["Backend Developer", "Astronauta"]);
+        expect(JSON.parse(result.text)).toEqual({ saved: ["Backend Developer"], notRecognized: ["Astronauta"] });
+    });
+
+    it("devuelve como error un guardado de puestos inválido", async () => {
+        positions.saveDesiredRoles.mockResolvedValue({ ok: false, code: "INVALID_INPUT", message: "Máximo 10 puestos." });
+
+        const result = await callTool("set_desired_positions", { titles: ["Backend Developer"] });
+
+        expect(result).toEqual({ isError: true, text: "Máximo 10 puestos." });
     });
 });

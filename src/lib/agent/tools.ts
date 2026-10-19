@@ -3,6 +3,7 @@ import "server-only";
 import { z } from "zod";
 import prisma from "@/lib/prisma";
 import { createApplicationForProfile } from "@/lib/applications/create";
+import { getDesiredRolesForProfile, saveDesiredRoles } from "@/lib/positions/save";
 import { APPLICATION_STATUSES, APPLY_MODES, LIMITS, sanitizeKeywords } from "@/lib/validation";
 import type { AgentContext } from "./auth";
 import { ToolError, defineTool, type McpTool } from "./mcp";
@@ -302,6 +303,28 @@ const recordResult = defineTool({
     },
 });
 
+const getDesiredPositions = defineTool({
+    name: "get_desired_positions",
+    description:
+        "Puestos deseados del usuario (los que usa la búsqueda diaria de ofertas) y la lista de roles del diccionario que se pueden elegir.",
+    input: z.object({}),
+    run: async (ctx: AgentContext) => {
+        const { selected, available } = await getDesiredRolesForProfile(ctx.profileId);
+        return { selected, available };
+    },
+});
+
+const setDesiredPositions = defineTool({
+    name: "set_desired_positions",
+    description: `Reemplaza los puestos deseados del usuario (máximo ${LIMITS.positions}). Usá nombres de get_desired_positions; los que no sean roles del diccionario se descartan y se devuelven en notRecognized. Confirmá la lista con el usuario antes de guardarla.`,
+    input: z.object({ titles: z.array(z.string().trim().min(1).max(LIMITS.title)).min(1).max(LIMITS.positions) }),
+    run: async (ctx: AgentContext, input) => {
+        const result = await saveDesiredRoles(ctx.profileId, input.titles);
+        if (!result.ok) throw new ToolError(result.message);
+        return { saved: result.data.roles, notRecognized: result.data.dropped };
+    },
+});
+
 export const agentTools: McpTool<AgentContext>[] = [
     getCandidate,
     getQueue,
@@ -310,4 +333,6 @@ export const agentTools: McpTool<AgentContext>[] = [
     saveAnswerTemplate,
     addOffer,
     recordResult,
+    getDesiredPositions,
+    setDesiredPositions,
 ];
