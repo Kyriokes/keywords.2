@@ -28,7 +28,15 @@ export async function GET(request: Request) {
         where: { enabled: true },
         // Los que hace más tiempo que no se buscan, primero
         orderBy: { lastRunAt: { sort: "asc", nulls: "first" } },
-        select: { profileId: true, sources: true, atsBoards: true, minScore: true, maxPerRun: true },
+        select: {
+            profileId: true,
+            sources: true,
+            atsBoards: true,
+            minScore: true,
+            maxPerRun: true,
+            workModes: true,
+            seniorityPolicy: true,
+        },
     });
 
     const cache: FetchCache = new Map();

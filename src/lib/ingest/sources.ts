@@ -139,6 +139,44 @@ export function parseHimalayas(data: unknown): IngestedJob[] {
     );
 }
 
+/** Nombres de una relación expandida de Get on Board ({ data: [{ attributes: { name } }] }). */
+function relationNames(relation: unknown): string[] {
+    const items = isObject(relation) && Array.isArray(relation.data) ? relation.data : [];
+    return items.flatMap((item) => {
+        if (!isObject(item) || !isObject(item.attributes)) return [];
+        const name = str(item.attributes.name);
+        const country = str(item.attributes.country);
+        return name ? [country ? `${name}, ${country}` : name] : [];
+    });
+}
+
+/**
+ * Ubicación legible a partir de la modalidad de Get on Board: "Remoto", "Remoto desde South America",
+ * "Híbrido · Santiago, Chile" o "Presencial · Argentina". Así los filtros saben dónde hay que estar.
+ */
+function getOnBoardLocation(attributes: Json): string | null {
+    const countries = Array.isArray(attributes.countries)
+        ? attributes.countries.map(str).filter((country): country is string => !!country && country !== "Remote")
+        : [];
+    const cities = relationNames(attributes.location_cities);
+    const where = (cities.length ? cities : countries).join(", ");
+
+    switch (attributes.remote_modality) {
+        case "fully_remote":
+            return "Remoto";
+        case "remote_local": {
+            const allowed = [...relationNames(attributes.location_regions), ...relationNames(attributes.location_tenants)];
+            return allowed.length ? `Remoto desde ${allowed.join(", ")}` : "Remoto";
+        }
+        case "hybrid":
+            return where ? `Híbrido · ${where}` : "Híbrido";
+        case "no_remote":
+            return where ? `Presencial · ${where}` : "Presencial";
+        default:
+            return attributes.remote ? "Remoto" : where || null;
+    }
+}
+
 export function parseGetOnBoard(data: unknown): IngestedJob[] {
     const jobs = isObject(data) && Array.isArray(data.data) ? data.data : [];
     return compact(
@@ -156,7 +194,7 @@ export function parseGetOnBoard(data: unknown): IngestedJob[] {
                 url: links.public_url,
                 applyUrl: null,
                 description: parts.length ? htmlToText(parts.join("\n")) : null,
-                location: attributes.remote ? "Remoto" : null,
+                location: getOnBoardLocation(attributes),
             });
         })
     );
@@ -254,7 +292,10 @@ export async function fetchAggregator(source: AggregatorSource, terms: string[])
         case "getonbrd": {
             const results = await Promise.all(
                 terms.slice(0, 5).map((term) =>
-                    getJson(`https://www.getonbrd.com/api/v0/search/jobs?query=${encodeURIComponent(term)}&per_page=30&expand=["company"]`)
+                    getJson(
+                        `https://www.getonbrd.com/api/v0/search/jobs?query=${encodeURIComponent(term)}&per_page=30` +
+                            `&expand=["company","location_cities","location_regions","location_tenants"]`
+                    )
                 )
             );
             return results.flatMap(parseGetOnBoard);

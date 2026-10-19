@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { SENIORITY_POLICIES, WORK_MODES } from "@/lib/ingest/eligibility";
 
 export const LIMITS = {
     title: 200,
@@ -26,9 +27,9 @@ export const LIMITS = {
     agentTokenName: 100,
     coverLetterTemplates: 20,
     mediaAssets: 10,
-    coverLettersPerDay: 30,
+    coverLettersPerDay: 60,
     atsBoards: 30,
-    searchMaxPerRun: 25,
+    searchMaxPerRun: 60,
 } as const;
 
 /** Resultado de las server actions cuyos errores esperados se muestran al usuario. */
@@ -215,6 +216,11 @@ export const jobSearchSettingsSchema = z.object({
     atsBoards: z.array(z.string().trim().toLowerCase()).transform((boards) => Array.from(new Set(boards.filter(Boolean)))),
     minScore: z.number().int().min(0).max(100),
     maxPerRun: z.number().int().min(1).max(LIMITS.searchMaxPerRun),
+    workModes: z
+        .array(z.enum(WORK_MODES))
+        .min(1, "Elegí al menos una modalidad.")
+        .transform((modes) => Array.from(new Set(modes))),
+    seniorityPolicy: z.enum(SENIORITY_POLICIES),
 });
 
 /** Primer mensaje de error de un safeParse fallido, para mostrar al usuario. */

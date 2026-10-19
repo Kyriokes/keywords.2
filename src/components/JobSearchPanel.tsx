@@ -1,17 +1,77 @@
 'use client'
 
 import { useState } from 'react'
-import { Loader2, Search } from 'lucide-react'
+import { FlaskConical, Loader2, Search } from 'lucide-react'
 import { useRouter } from 'next/navigation'
 import { toast } from 'sonner'
+import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Textarea } from '@/components/ui/textarea'
-import { runJobSearchNow, saveJobSearchSettings, type JobSearchSettingsData } from '@/actions/job-search-actions'
+import {
+    previewJobSearch,
+    runJobSearchNow,
+    saveJobSearchSettings,
+    type JobSearchSettingsData,
+} from '@/actions/job-search-actions'
+import { SENIORITY_POLICIES, SENIORITY_POLICY_LABELS, WORK_MODES, WORK_MODE_LABELS } from '@/lib/ingest/eligibility'
+import type { SearchDecision } from '@/lib/ingest/run'
 import { AGGREGATOR_SOURCES, SOURCE_LABELS } from '@/lib/ingest/sources'
+import { LIMITS } from '@/lib/validation'
 
 const dateTimeFormatter = new Intl.DateTimeFormat('es', { dateStyle: 'medium', timeStyle: 'short' })
+
+interface Preview {
+    summary: string
+    decisions: SearchDecision[]
+    errors: string[]
+}
+
+/** Resultado de "Probar filtros": primero lo que entraría, después lo descartado con su motivo. */
+function PreviewResults({ preview }: { preview: Preview }) {
+    const passes = preview.decisions.filter((decision) => decision.status !== 'REJECTED')
+    const rejected = preview.decisions.filter((decision) => decision.status === 'REJECTED')
+
+    return (
+        <div className="space-y-3 rounded-md border p-3 text-sm">
+            <p className="font-medium">{preview.summary}</p>
+            {preview.errors.length > 0 && (
+                <p className="text-xs text-muted-foreground">No respondieron: {preview.errors.join(' · ')}</p>
+            )}
+            {[
+                { title: `Entrarían (${passes.length})`, items: passes },
+                { title: `Descartadas (${rejected.length})`, items: rejected },
+            ].map(
+                (group) =>
+                    group.items.length > 0 && (
+                        <details key={group.title} open={group.items === passes}>
+                            <summary className="cursor-pointer font-medium">{group.title}</summary>
+                            <ul className="mt-2 divide-y">
+                                {group.items.map((decision) => (
+                                    <li key={decision.externalId} className="flex flex-wrap items-baseline gap-x-2 gap-y-1 py-2">
+                                        <a href={decision.url} target="_blank" rel="noreferrer" className="font-medium underline-offset-2 hover:underline">
+                                            {decision.title}
+                                        </a>
+                                        <span className="text-muted-foreground">
+                                            {[decision.company, decision.location].filter(Boolean).join(' · ')}
+                                        </span>
+                                        {decision.score !== null && <Badge variant="outline">match {decision.score}%</Badge>}
+                                        {decision.summary && <span className="text-xs text-muted-foreground">{decision.summary}</span>}
+                                        {decision.reason && (
+                                            <Badge variant="secondary" className="basis-full sm:basis-auto">
+                                                {decision.reason}
+                                            </Badge>
+                                        )}
+                                    </li>
+                                ))}
+                            </ul>
+                        </details>
+                    )
+            )}
+        </div>
+    )
+}
 
 export function JobSearchPanel({ initial }: { initial: JobSearchSettingsData }) {
     const router = useRouter()
@@ -20,23 +80,32 @@ export function JobSearchPanel({ initial }: { initial: JobSearchSettingsData }) 
     const [boards, setBoards] = useState(initial.atsBoards.join('\n'))
     const [minScore, setMinScore] = useState(initial.minScore)
     const [maxPerRun, setMaxPerRun] = useState(initial.maxPerRun)
+    const [workModes, setWorkModes] = useState<string[]>(initial.workModes)
+    const [seniorityPolicy, setSeniorityPolicy] = useState(initial.seniorityPolicy)
     const [lastResult, setLastResult] = useState(initial.lastResult)
     const [lastRunAt, setLastRunAt] = useState(initial.lastRunAt)
-    const [busy, setBusy] = useState<'save' | 'run' | null>(null)
+    const [preview, setPreview] = useState<Preview | null>(null)
+    const [busy, setBusy] = useState<'save' | 'run' | 'preview' | null>(null)
 
-    const toggleSource = (source: string) =>
-        setSources((current) => (current.includes(source) ? current.filter((item) => item !== source) : [...current, source]))
+    const toggle = (setter: typeof setSources) => (value: string) =>
+        setter((current) => (current.includes(value) ? current.filter((item) => item !== value) : [...current, value]))
+    const toggleSource = toggle(setSources)
+    const toggleWorkMode = toggle(setWorkModes)
+
+    const currentSettings = () => ({
+        enabled,
+        sources,
+        atsBoards: boards.split(/[\n,]/),
+        minScore,
+        maxPerRun,
+        workModes,
+        seniorityPolicy,
+    })
 
     const save = async () => {
         setBusy('save')
         try {
-            const result = await saveJobSearchSettings({
-                enabled,
-                sources,
-                atsBoards: boards.split(/[\n,]/),
-                minScore,
-                maxPerRun,
-            })
+            const result = await saveJobSearchSettings(currentSettings())
             if (!result.ok) return void toast.error(result.message)
             toast.success(enabled ? 'Listo: se busca todos los días a las 8 (hora de Argentina)' : 'Configuración guardada')
         } catch {
@@ -63,6 +132,19 @@ export function JobSearchPanel({ initial }: { initial: JobSearchSettingsData }) 
         }
     }
 
+    const runPreview = async () => {
+        setBusy('preview')
+        try {
+            const result = await previewJobSearch(currentSettings())
+            if (!result.ok) return void toast.error(result.message)
+            setPreview(result.data)
+        } catch {
+            toast.error('No se pudieron probar los filtros')
+        } finally {
+            setBusy(null)
+        }
+    }
+
     return (
         <details className="rounded-lg border bg-card text-card-foreground shadow-sm">
             <summary className="cursor-pointer p-4 font-medium">
@@ -71,7 +153,7 @@ export function JobSearchPanel({ initial }: { initial: JobSearchSettingsData }) 
             <div className="space-y-5 border-t p-4">
                 <p className="text-sm text-muted-foreground">
                     Todos los días se revisan portales con API pública. Las ofertas de tus puestos deseados que encajan con tu CV
-                    entran a &quot;Por aprobar&quot;. No usa tokens de Claude.
+                    y pasan los filtros entran a &quot;Por aprobar&quot;. No usa tokens de Claude.
                 </p>
 
                 <label className="flex items-center gap-2 text-sm font-medium">
@@ -106,14 +188,52 @@ export function JobSearchPanel({ initial }: { initial: JobSearchSettingsData }) 
                     </p>
                 </div>
 
+                <fieldset className="space-y-2">
+                    <legend className="text-sm font-medium">Modalidades que aceptás</legend>
+                    <div className="grid gap-2 sm:grid-cols-2">
+                        {WORK_MODES.map((mode) => (
+                            <label key={mode} className="flex items-center gap-2 text-sm">
+                                <input type="checkbox" checked={workModes.includes(mode)} onChange={() => toggleWorkMode(mode)} className="size-4" />
+                                {WORK_MODE_LABELS[mode]}
+                            </label>
+                        ))}
+                    </div>
+                    <p className="text-xs text-muted-foreground">
+                        Siempre se descartan las que piden ciudadanía, vivir en otro país, permiso de trabajo de otro país o mudarse.
+                    </p>
+                </fieldset>
+
+                <fieldset className="space-y-2">
+                    <legend className="text-sm font-medium">Hasta qué nivel postular</legend>
+                    {SENIORITY_POLICIES.map((policy) => (
+                        <label key={policy} className="flex items-center gap-2 text-sm">
+                            <input
+                                type="radio"
+                                name="seniorityPolicy"
+                                checked={seniorityPolicy === policy}
+                                onChange={() => setSeniorityPolicy(policy)}
+                                className="size-4"
+                            />
+                            {SENIORITY_POLICY_LABELS[policy]}
+                        </label>
+                    ))}
+                </fieldset>
+
                 <div className="grid gap-4 sm:grid-cols-2">
                     <div className="space-y-2">
                         <Label htmlFor="minScore">Match mínimo con tu CV (%)</Label>
                         <Input id="minScore" type="number" min={0} max={100} value={minScore} onChange={(event) => setMinScore(Number(event.target.value))} />
                     </div>
                     <div className="space-y-2">
-                        <Label htmlFor="maxPerRun">Ofertas nuevas por día (máximo)</Label>
-                        <Input id="maxPerRun" type="number" min={1} max={25} value={maxPerRun} onChange={(event) => setMaxPerRun(Number(event.target.value))} />
+                        <Label htmlFor="maxPerRun">Ofertas nuevas por búsqueda (máximo)</Label>
+                        <Input
+                            id="maxPerRun"
+                            type="number"
+                            min={1}
+                            max={LIMITS.searchMaxPerRun}
+                            value={maxPerRun}
+                            onChange={(event) => setMaxPerRun(Number(event.target.value))}
+                        />
                     </div>
                 </div>
 
@@ -129,11 +249,20 @@ export function JobSearchPanel({ initial }: { initial: JobSearchSettingsData }) 
                         {busy === 'save' && <Loader2 className="size-4 animate-spin" />}
                         Guardar
                     </Button>
+                    <Button variant="outline" onClick={runPreview} disabled={busy !== null}>
+                        {busy === 'preview' ? <Loader2 className="size-4 animate-spin" /> : <FlaskConical className="size-4" />}
+                        Probar filtros
+                    </Button>
                     <Button variant="outline" onClick={runNow} disabled={busy !== null}>
                         {busy === 'run' ? <Loader2 className="size-4 animate-spin" /> : <Search className="size-4" />}
                         Buscar ahora
                     </Button>
                 </div>
+                <p className="text-xs text-muted-foreground">
+                    &quot;Probar filtros&quot; usa lo que ves en pantalla aunque no lo hayas guardado, y no carga nada en la cola.
+                </p>
+
+                {preview && <PreviewResults preview={preview} />}
             </div>
         </details>
     )

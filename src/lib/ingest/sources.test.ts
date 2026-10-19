@@ -69,6 +69,38 @@ describe("parsers", () => {
         expect(jobs[0]).toMatchObject({ externalId: "dev-123", company: "Delta", location: "Remoto", description: "Hacer cosas\n\nMás" });
     });
 
+    it("Get on Board: arma la ubicación con la modalidad, la ciudad y los países permitidos", () => {
+        const names = (items: string[], type: string) => ({ data: items.map((name) => ({ id: name, type, attributes: { name } })) });
+        const offer = (id: string, attributes: Record<string, unknown>) => ({
+            id,
+            attributes: { title: "Dev", description: "<p>React</p>", ...attributes },
+            links: { public_url: `https://www.getonbrd.com/jobs/${id}` },
+        });
+        const jobs = parseGetOnBoard({
+            data: [
+                offer("remoto", { remote_modality: "fully_remote", countries: ["Remote"] }),
+                offer("remoto-local", {
+                    remote_modality: "remote_local",
+                    countries: ["Remote"],
+                    location_regions: names(["South America"], "region"),
+                    location_tenants: names(["Mexico"], "country"),
+                }),
+                offer("hibrido", {
+                    remote_modality: "hybrid",
+                    countries: ["Chile"],
+                    location_cities: { data: [{ id: "1", type: "tenant_city", attributes: { name: "Santiago", country: "Chile" } }] },
+                }),
+                offer("presencial", { remote_modality: "no_remote", countries: ["Argentina"] }),
+            ],
+        });
+        expect(jobs.map((job) => job.location)).toEqual([
+            "Remoto",
+            "Remoto desde South America, Mexico",
+            "Híbrido · Santiago, Chile",
+            "Presencial · Argentina",
+        ]);
+    });
+
     it("Greenhouse, Lever y Ashby prefijan el id con la empresa", () => {
         const greenhouse = parseGreenhouse(
             { jobs: [{ id: 5, title: "SRE", absolute_url: "https://boards.greenhouse.io/acme/jobs/5", content: "&lt;p&gt;SRE&lt;/p&gt;", location: { name: "Remote" } }] },

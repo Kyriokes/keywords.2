@@ -307,16 +307,18 @@ model MediaAsset {
 
 // Búsqueda diaria de ofertas en portales con API pública. Lo que encaja con el CV entra a la cola.
 model JobSearchSettings {
-  id         String    @id @default(cuid())
-  enabled    Boolean   @default(false)
-  sources    String[] // Fuentes activas; valores en src/lib/ingest/sources.ts
-  atsBoards  String[] // Empresas a seguir en su ATS, como "greenhouse:stripe" o "lever:netflix"
-  minScore   Int       @default(40) // Score mínimo (0-100) para entrar a la cola
-  maxPerRun  Int       @default(10) // Ofertas nuevas por búsqueda, como máximo
-  lastRunAt  DateTime?
-  lastResult String? // Resumen de la última búsqueda, para mostrar en la app
-  createdAt  DateTime  @default(now())
-  updatedAt  DateTime  @updatedAt
+  id              String    @id @default(cuid())
+  enabled         Boolean   @default(false)
+  sources         String[] // Fuentes activas; valores en src/lib/ingest/sources.ts
+  atsBoards       String[] // Empresas a seguir en su ATS, como "greenhouse:stripe" o "lever:netflix"
+  minScore        Int       @default(40) // Score mínimo (0-100) para entrar a la cola
+  maxPerRun       Int       @default(10) // Ofertas nuevas por búsqueda, como máximo
+  workModes       String[]  @default(["REMOTE", "REMOTE_US_HOURS", "HYBRID"]) // Modalidades aceptadas; valores en src/lib/ingest/eligibility.ts
+  seniorityPolicy String    @default("FLEXIBLE") // Hasta qué nivel postular; valores en src/lib/ingest/eligibility.ts
+  lastRunAt       DateTime?
+  lastResult      String? // Resumen de la última búsqueda, para mostrar en la app
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
 
   profileId String  @unique
   profile   Profile @relation(fields: [profileId], references: [id], onDelete: Cascade)

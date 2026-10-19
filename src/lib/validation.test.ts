@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
     answerTemplateSchema,
     createApplicationSchema,
+    jobSearchSettingsSchema,
     mediaAssetSchema,
     parseApplicationDate,
     parseApplicationStatus,
@@ -94,5 +95,29 @@ describe("mediaAssetSchema", () => {
     it("solo acepta links http(s)", () => {
         expect(mediaAssetSchema.parse({ name: "Video", url: "youtu.be/abc" }).url).toBe("https://youtu.be/abc");
         expect(mediaAssetSchema.safeParse({ name: "Video", url: "javascript:alert(1)" }).success).toBe(false);
+    });
+});
+
+describe("jobSearchSettingsSchema", () => {
+    const base = { enabled: true, sources: ["remotive"], atsBoards: [], minScore: 40, maxPerRun: 40 };
+
+    it("acepta las modalidades y la política de seniority", () => {
+        const parsed = jobSearchSettingsSchema.parse({ ...base, workModes: ["REMOTE", "HYBRID", "REMOTE"], seniorityPolicy: "FLEXIBLE" });
+        expect(parsed.workModes).toEqual(["REMOTE", "HYBRID"]);
+        expect(parsed.seniorityPolicy).toBe("FLEXIBLE");
+    });
+
+    it("pide al menos una modalidad", () => {
+        expect(jobSearchSettingsSchema.safeParse({ ...base, workModes: [], seniorityPolicy: "FLEXIBLE" }).success).toBe(false);
+    });
+
+    it("rechaza valores que no conoce", () => {
+        expect(jobSearchSettingsSchema.safeParse({ ...base, workModes: ["MARTE"], seniorityPolicy: "FLEXIBLE" }).success).toBe(false);
+        expect(jobSearchSettingsSchema.safeParse({ ...base, workModes: ["REMOTE"], seniorityPolicy: "TODO" }).success).toBe(false);
+    });
+
+    it("permite hasta 60 ofertas nuevas por búsqueda", () => {
+        expect(jobSearchSettingsSchema.safeParse({ ...base, maxPerRun: 60, workModes: ["REMOTE"], seniorityPolicy: "ANY" }).success).toBe(true);
+        expect(jobSearchSettingsSchema.safeParse({ ...base, maxPerRun: 61, workModes: ["REMOTE"], seniorityPolicy: "ANY" }).success).toBe(false);
     });
 });
