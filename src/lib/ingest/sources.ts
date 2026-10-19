@@ -18,7 +18,9 @@ export interface IngestedJob {
 }
 
 /** Portales que agregan ofertas de muchas empresas: se consultan una vez por búsqueda. */
-export const AGGREGATOR_SOURCES = ["remotive", "remoteok", "himalayas", "getonbrd"] as const;
+export const AGGREGATOR_SOURCES = ["remotive", "remoteok", "himalayas", "getonbrd", "jobicy"] as const;
+/** Portales que se consultan por cada puesto deseado, no una sola vez para todos. */
+export const SEARCH_BY_TERM_SOURCES = new Set<string>(["himalayas", "getonbrd"]);
 /** ATS de empresas: se consultan por cada empresa que siga el usuario ("greenhouse:stripe"). */
 export const ATS_SOURCES = ["greenhouse", "lever", "ashby"] as const;
 
@@ -30,6 +32,7 @@ export const SOURCE_LABELS: Record<AggregatorSource | AtsSource, string> = {
     remoteok: "Remote OK (remoto)",
     himalayas: "Himalayas (remoto)",
     getonbrd: "Get on Board (LatAm)",
+    jobicy: "Jobicy (remoto, LatAm)",
     greenhouse: "Greenhouse",
     lever: "Lever",
     ashby: "Ashby",
@@ -133,7 +136,37 @@ export function parseHimalayas(data: unknown): IngestedJob[] {
                 url: item.applicationLink,
                 applyUrl: null,
                 description: str(item.description) && htmlToText(item.description as string),
-                location: Array.isArray(item.locationRestrictions) ? item.locationRestrictions.join(", ") || null : null,
+                location: Array.isArray(item.locationRestrictions) ? himalayasLocation(item.locationRestrictions) : null,
+            })
+        )
+    );
+}
+
+/**
+ * Países donde se puede vivir para la oferta de Himalayas. Sin restricción es worldwide; una lista
+ * larga que incluye Argentina se resume ("Argentina y 73 países más") para que se pueda leer.
+ */
+function himalayasLocation(restrictions: unknown[]): string {
+    const countries = restrictions.map(str).filter((country): country is string => !!country);
+    if (countries.length === 0) return "Worldwide";
+    if (countries.length > 3 && countries.includes("Argentina")) return `Argentina y ${countries.length - 1} países más`;
+    return countries.join(", ");
+}
+
+export function parseJobicy(data: unknown): IngestedJob[] {
+    const jobs = isObject(data) && Array.isArray(data.jobs) ? data.jobs : [];
+    return compact(
+        jobs.filter(isObject).map((item) =>
+            job({
+                source: "jobicy",
+                externalId: item.id,
+                title: item.jobTitle,
+                company: str(item.companyName),
+                // Jobicy pide que la postulación vaya a su link original: no hay formulario aparte
+                url: item.url,
+                applyUrl: null,
+                description: str(item.jobDescription) && htmlToText(item.jobDescription as string),
+                location: str(item.jobGeo),
             })
         )
     );
@@ -286,19 +319,34 @@ export async function fetchAggregator(source: AggregatorSource, terms: string[])
         case "remoteok":
             return parseRemoteOk(await getJson("https://remoteok.com/api"));
         case "himalayas": {
-            const pages = await Promise.all([0, 20, 40].map((offset) => getJson(`https://himalayas.app/jobs/api?limit=20&offset=${offset}`)));
+            // La búsqueda con country=AR trae solo ofertas que aceptan candidatos desde Argentina (20 por página)
+            const pages = await Promise.all(
+                terms.slice(0, 6).flatMap((term) =>
+                    [1, 2].map((page) =>
+                        getJson(`https://himalayas.app/jobs/api/search?q=${encodeURIComponent(term)}&country=AR&page=${page}`)
+                    )
+                )
+            );
             return pages.flatMap(parseHimalayas);
         }
         case "getonbrd": {
             const results = await Promise.all(
-                terms.slice(0, 5).map((term) =>
+                terms.map((term) =>
                     getJson(
-                        `https://www.getonbrd.com/api/v0/search/jobs?query=${encodeURIComponent(term)}&per_page=30` +
+                        `https://www.getonbrd.com/api/v0/search/jobs?query=${encodeURIComponent(term)}&per_page=50` +
                             `&expand=["company","location_cities","location_regions","location_tenants"]`
                     )
                 )
             );
             return results.flatMap(parseGetOnBoard);
+        }
+        case "jobicy": {
+            const results = await Promise.all(
+                ["latam", "argentina"].map((geo) =>
+                    getJson(`https://jobicy.com/api/v2/remote-jobs?count=50&geo=${geo}&industry=engineering`)
+                )
+            );
+            return results.flatMap(parseJobicy);
         }
     }
 }

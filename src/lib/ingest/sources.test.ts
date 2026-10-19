@@ -6,6 +6,7 @@ import {
     parseGetOnBoard,
     parseGreenhouse,
     parseHimalayas,
+    parseJobicy,
     parseLever,
     parseRemoteOk,
     parseRemotive,
@@ -54,6 +55,50 @@ describe("parsers", () => {
             jobs: [{ guid: "g1", title: "QA", companyName: "Gamma", applicationLink: "https://himalayas.app/j/1", description: "<p>QA</p>", locationRestrictions: ["Argentina", "Chile"] }],
         });
         expect(jobs[0]).toMatchObject({ externalId: "g1", company: "Gamma", location: "Argentina, Chile" });
+    });
+
+    it("Himalayas: resume las listas largas de países y marca worldwide las que no restringen", () => {
+        const countries = ["Albania", "Argentina", "Brazil", "Chile", "Spain"];
+        const jobs = parseHimalayas({
+            jobs: [
+                { guid: "g2", title: "Dev", applicationLink: "https://himalayas.app/j/2", description: "x", locationRestrictions: countries },
+                { guid: "g3", title: "Dev", applicationLink: "https://himalayas.app/j/3", description: "x", locationRestrictions: [] },
+                { guid: "g4", title: "Dev", applicationLink: "https://himalayas.app/j/4", description: "x", locationRestrictions: ["United States", "Canada", "Mexico", "Spain"] },
+            ],
+        });
+        expect(jobs.map((job) => job.location)).toEqual([
+            "Argentina y 4 países más",
+            "Worldwide",
+            "United States, Canada, Mexico, Spain",
+        ]);
+    });
+
+    it("Jobicy", () => {
+        const jobs = parseJobicy({
+            jobs: [
+                {
+                    id: 155937,
+                    url: "https://jobicy.com/jobs/155937-dev",
+                    jobTitle: "Full-Stack Engineer",
+                    companyName: "Elevenlabs",
+                    jobGeo: "LATAM",
+                    jobDescription: "<h3>About</h3><p>React &amp; Node</p>",
+                },
+                { id: 2, url: "https://jobicy.com/jobs/2", jobTitle: "", jobDescription: "<p>x</p>" },
+            ],
+        });
+        expect(jobs).toEqual([
+            {
+                source: "jobicy",
+                externalId: "155937",
+                title: "Full-Stack Engineer",
+                company: "Elevenlabs",
+                url: "https://jobicy.com/jobs/155937-dev",
+                applyUrl: null,
+                description: "About\nReact & Node",
+                location: "LATAM",
+            },
+        ]);
     });
 
     it("Get on Board", () => {

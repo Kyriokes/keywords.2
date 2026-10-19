@@ -6,7 +6,7 @@ import { createApplicationForProfile } from "@/lib/applications/create";
 import { computeMatchScore } from "@/lib/applications/prepare";
 import { detectKeywords } from "@/lib/keywords/dictionary";
 import { classifyJobTitle } from "@/lib/positions/dictionary";
-import { LIMITS } from "@/lib/validation";
+import { LIMITS, type ActionResult } from "@/lib/validation";
 import {
     DEFAULT_WORK_MODES,
     SENIORITY_POLICIES,
@@ -18,6 +18,7 @@ import {
 } from "./eligibility";
 import {
     AGGREGATOR_SOURCES,
+    SEARCH_BY_TERM_SOURCES,
     fetchAggregator,
     fetchAtsBoard,
     parseAtsBoard,
@@ -121,8 +122,11 @@ export async function runJobSearch(
     const requests = [
         ...aggregators.map((source) => ({
             label: source,
-            // Get on Board busca por término; los demás devuelven lo último publicado
-            load: () => cached(cache, source === "getonbrd" ? `${source}|${terms.join("|")}` : source, () => fetchAggregator(source, terms)),
+            // Los que buscan por puesto se cachean por lista de puestos; los demás devuelven lo último publicado
+            load: () =>
+                cached(cache, SEARCH_BY_TERM_SOURCES.has(source) ? `${source}|${terms.join("|")}` : source, () =>
+                    fetchAggregator(source, terms)
+                ),
         })),
         ...boards.map(({ source, board }) => ({
             label: `${source}:${board}`,
@@ -261,4 +265,22 @@ export async function runAndRecord(profileId: string, settings: SearchSettingsIn
         data: { lastRunAt: new Date(), lastResult: result.summary },
     });
     return result;
+}
+
+// Buscar a mano también consulta APIs ajenas: como mucho una vez por hora
+const MANUAL_RUN_INTERVAL_MS = 60 * 60 * 1000;
+
+/** Corre ahora la búsqueda guardada del perfil, como mucho una vez por hora. La usan "Buscar ahora" y el agente. */
+export async function runSavedSearch(profileId: string): Promise<ActionResult<{ summary: string; created: number }>> {
+    const settings = await prisma.jobSearchSettings.findUnique({ where: { profileId } });
+    if (!settings) return { ok: false, code: "NOT_CONFIGURED", message: "Guardá la configuración de la búsqueda antes de buscar." };
+
+    const elapsed = settings.lastRunAt ? Date.now() - settings.lastRunAt.getTime() : Infinity;
+    if (elapsed < MANUAL_RUN_INTERVAL_MS) {
+        const minutes = Math.ceil((MANUAL_RUN_INTERVAL_MS - elapsed) / 60_000);
+        return { ok: false, code: "TOO_SOON", message: `Ya se buscó hace poco. Podés volver a buscar en ${minutes} min.` };
+    }
+
+    const result = await runAndRecord(profileId, settings);
+    return { ok: true, data: { summary: result.summary, created: result.created } };
 }

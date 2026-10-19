@@ -35,7 +35,7 @@ const SENIOR_MIN_SCORE = 60;
 const MAX_PLAUSIBLE_YEARS = 15;
 
 /** Portales que solo publican trabajos remotos. */
-const REMOTE_ONLY_SOURCES = new Set(["remotive", "remoteok", "himalayas"]);
+const REMOTE_ONLY_SOURCES = new Set(["remotive", "remoteok", "himalayas", "jobicy"]);
 
 export interface OfferForEligibility {
     source: string;
