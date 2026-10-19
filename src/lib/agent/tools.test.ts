@@ -15,6 +15,8 @@ vi.mock("@/lib/prisma", () => ({ default: db }));
 vi.mock("@/lib/applications/create", () => ({ createApplicationForProfile: vi.fn() }));
 const positions = vi.hoisted(() => ({ getDesiredRolesForProfile: vi.fn(), saveDesiredRoles: vi.fn() }));
 vi.mock("@/lib/positions/save", () => positions);
+const search = vi.hoisted(() => ({ runSavedSearch: vi.fn() }));
+vi.mock("@/lib/ingest/run", () => search);
 
 import { handleMcpMessage } from "./mcp";
 import { SERVER_INSTRUCTIONS, agentTools } from "./tools";
@@ -159,5 +161,22 @@ describe("agentTools", () => {
         const result = await callTool("set_desired_positions", { titles: ["Backend Developer"] });
 
         expect(result).toEqual({ isError: true, text: "Máximo 10 puestos." });
+    });
+
+    it("busca ofertas nuevas con la configuración guardada del perfil del token", async () => {
+        search.runSavedSearch.mockResolvedValue({ ok: true, data: { summary: "300 ofertas revisadas, 20 nuevas en la cola.", created: 20 } });
+
+        const result = await callTool("search_now", {});
+
+        expect(search.runSavedSearch).toHaveBeenCalledWith("profile-1");
+        expect(JSON.parse(result.text)).toEqual({ summary: "300 ofertas revisadas, 20 nuevas en la cola.", created: 20 });
+    });
+
+    it("avisa como error si se buscó hace poco", async () => {
+        search.runSavedSearch.mockResolvedValue({ ok: false, code: "TOO_SOON", message: "Ya se buscó hace poco. Podés volver a buscar en 30 min." });
+
+        const result = await callTool("search_now", {});
+
+        expect(result).toEqual({ isError: true, text: "Ya se buscó hace poco. Podés volver a buscar en 30 min." });
     });
 });

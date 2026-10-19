@@ -4,7 +4,7 @@ import { auth } from "@/auth"
 import prisma from "@/lib/prisma"
 import { revalidatePath } from "next/cache"
 import { DEFAULT_WORK_MODES } from "@/lib/ingest/eligibility"
-import { runAndRecord, runJobSearch, type SearchDecision } from "@/lib/ingest/run"
+import { runJobSearch, runSavedSearch, type SearchDecision } from "@/lib/ingest/run"
 import { AGGREGATOR_SOURCES, parseAtsBoard } from "@/lib/ingest/sources"
 import { isRateLimited } from "@/lib/rateLimit"
 import { LIMITS, firstIssueMessage, jobSearchSettingsSchema, type ActionResult } from "@/lib/validation"
@@ -26,8 +26,6 @@ type EditableSettings = Pick<
   "enabled" | "sources" | "atsBoards" | "minScore" | "maxPerRun" | "workModes" | "seniorityPolicy"
 >
 
-// Buscar a mano también consulta APIs ajenas: como mucho una vez por hora
-const MANUAL_RUN_INTERVAL_MS = 60 * 60 * 1000
 // Probar filtros consulta las mismas APIs pero no guarda nada: unas pocas veces cada 10 minutos
 const PREVIEW_MAX = 5
 const PREVIEW_WINDOW_MS = 10 * 60 * 1000
@@ -114,17 +112,9 @@ export async function saveJobSearchSettings(data: EditableSettings): Promise<Act
 /** Corre la búsqueda ahora mismo para el usuario, sin esperar al cron. */
 export async function runJobSearchNow(): Promise<ActionResult<{ summary: string; created: number }>> {
   const profileId = await requireProfileId()
-  const settings = await prisma.jobSearchSettings.findUnique({ where: { profileId } })
-  if (!settings) return { ok: false, code: "NOT_CONFIGURED", message: "Guardá la configuración antes de buscar." }
-
-  if (settings.lastRunAt && Date.now() - settings.lastRunAt.getTime() < MANUAL_RUN_INTERVAL_MS) {
-    const minutes = Math.ceil((MANUAL_RUN_INTERVAL_MS - (Date.now() - settings.lastRunAt.getTime())) / 60_000)
-    return { ok: false, code: "TOO_SOON", message: `Ya se buscó hace poco. Podés volver a buscar en ${minutes} min.` }
-  }
-
-  const result = await runAndRecord(profileId, settings)
-  revalidatePath("/user/queue")
-  return { ok: true, data: { summary: result.summary, created: result.created } }
+  const result = await runSavedSearch(profileId)
+  if (result.ok) revalidatePath("/user/queue")
+  return result
 }
 
 /**

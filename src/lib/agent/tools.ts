@@ -3,6 +3,7 @@ import "server-only";
 import { z } from "zod";
 import prisma from "@/lib/prisma";
 import { createApplicationForProfile } from "@/lib/applications/create";
+import { runSavedSearch } from "@/lib/ingest/run";
 import { getDesiredRolesForProfile, saveDesiredRoles } from "@/lib/positions/save";
 import { APPLICATION_STATUSES, APPLY_MODES, LIMITS, sanitizeKeywords } from "@/lib/validation";
 import type { AgentContext } from "./auth";
@@ -325,6 +326,18 @@ const setDesiredPositions = defineTool({
     },
 });
 
+const searchNow = defineTool({
+    name: "search_now",
+    description:
+        "Busca ofertas nuevas en los portales con la configuración guardada del usuario y deja en la cola (READY) las que pasan los filtros. Como mucho una vez por hora; llamala al empezar una sesión de postulaciones, antes de get_queue.",
+    input: z.object({}),
+    run: async (ctx: AgentContext) => {
+        const result = await runSavedSearch(ctx.profileId);
+        if (!result.ok) throw new ToolError(result.message);
+        return result.data;
+    },
+});
+
 export const agentTools: McpTool<AgentContext>[] = [
     getCandidate,
     getQueue,
@@ -335,4 +348,5 @@ export const agentTools: McpTool<AgentContext>[] = [
     recordResult,
     getDesiredPositions,
     setDesiredPositions,
+    searchNow,
 ];
