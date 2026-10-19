@@ -3,7 +3,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 vi.mock("server-only", () => ({}));
 
 const db = vi.hoisted(() => ({
-    jobApplication: { findFirst: vi.fn(), findMany: vi.fn(), findUniqueOrThrow: vi.fn(), update: vi.fn() },
+    jobApplication: { findFirst: vi.fn(), findMany: vi.fn(), findUniqueOrThrow: vi.fn(), update: vi.fn(), updateMany: vi.fn() },
     answerTemplate: { findFirst: vi.fn(), findMany: vi.fn(), count: vi.fn(), create: vi.fn(), update: vi.fn() },
     cvVariant: { create: vi.fn() },
     applicationAnswer: { deleteMany: vi.fn(), createMany: vi.fn() },
@@ -17,6 +17,10 @@ const positions = vi.hoisted(() => ({ getDesiredRolesForProfile: vi.fn(), saveDe
 vi.mock("@/lib/positions/save", () => positions);
 const search = vi.hoisted(() => ({ runSavedSearch: vi.fn() }));
 vi.mock("@/lib/ingest/run", () => search);
+// Lo programado con after() se corre en el momento, para poder verlo en el test
+vi.mock("next/server", () => ({ after: (task: () => Promise<void>) => task() }));
+const coverLetters = vi.hoisted(() => ({ generateCoverLetterForApplication: vi.fn() }));
+vi.mock("@/lib/applications/coverLetter", () => coverLetters);
 
 import { handleMcpMessage } from "./mcp";
 import { SERVER_INSTRUCTIONS, agentTools } from "./tools";
@@ -75,6 +79,14 @@ describe("agentTools", () => {
         expect(db.jobApplication.findMany).toHaveBeenCalledWith(
             expect.objectContaining({ where: { profileId: "profile-1", status: "APPROVED" }, take: 10 })
         );
+    });
+
+    it("la cola trae las notas y la fuente, para revisar las ofertas en el chat", async () => {
+        db.jobApplication.findMany.mockResolvedValue([]);
+
+        await callTool("get_queue", { status: "READY" });
+
+        expect(db.jobApplication.findMany.mock.calls[0][0].select).toMatchObject({ notes: true, source: true });
     });
 
     it("registra la postulación enviada con sus respuestas, carta y CV adaptado", async () => {
@@ -178,5 +190,39 @@ describe("agentTools", () => {
         const result = await callTool("search_now", {});
 
         expect(result).toEqual({ isError: true, text: "Ya se buscó hace poco. Podés volver a buscar en 30 min." });
+    });
+
+    it("aprueba y descarta ofertas del perfil del token y prepara la carta de las aprobadas", async () => {
+        db.jobApplication.findMany.mockResolvedValue([
+            { id: "app-1", status: "READY" },
+            { id: "app-2", status: "READY" },
+        ]);
+        coverLetters.generateCoverLetterForApplication.mockResolvedValue({ ok: true, data: { text: "carta" } });
+
+        const result = await callTool("review_offers", { approve: ["app-1", "app-otro-perfil"], skip: ["app-2"] });
+
+        expect(db.jobApplication.findMany).toHaveBeenCalledWith({
+            where: { id: { in: ["app-1", "app-otro-perfil", "app-2"] }, profileId: "profile-1", status: { in: ["READY", "APPROVED", "NEEDS_USER"] } },
+            select: { id: true, status: true },
+        });
+        expect(db.jobApplication.updateMany).toHaveBeenCalledWith({ where: { id: { in: ["app-1"] }, profileId: "profile-1" }, data: { status: "APPROVED" } });
+        expect(db.jobApplication.updateMany).toHaveBeenCalledWith({ where: { id: { in: ["app-2"] }, profileId: "profile-1" }, data: { status: "SKIPPED" } });
+        expect(coverLetters.generateCoverLetterForApplication).toHaveBeenCalledWith("profile-1", "app-1");
+        expect(JSON.parse(result.text)).toEqual({ approved: 1, skipped: 1, notFound: ["app-otro-perfil"] });
+    });
+
+    it("no vuelve a preparar la carta de una oferta que ya estaba aprobada", async () => {
+        db.jobApplication.findMany.mockResolvedValue([{ id: "app-1", status: "APPROVED" }]);
+
+        await callTool("review_offers", { approve: ["app-1"] });
+
+        expect(coverLetters.generateCoverLetterForApplication).not.toHaveBeenCalled();
+    });
+
+    it("pide al menos una oferta para revisar", async () => {
+        const result = await callTool("review_offers", {});
+
+        expect(result.isError).toBe(true);
+        expect(db.jobApplication.updateMany).not.toHaveBeenCalled();
     });
 });

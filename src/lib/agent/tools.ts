@@ -1,7 +1,9 @@
 import "server-only";
 
+import { after } from "next/server";
 import { z } from "zod";
 import prisma from "@/lib/prisma";
+import { generateCoverLetterForApplication } from "@/lib/applications/coverLetter";
 import { createApplicationForProfile } from "@/lib/applications/create";
 import { runSavedSearch } from "@/lib/ingest/run";
 import { getDesiredRolesForProfile, saveDesiredRoles } from "@/lib/positions/save";
@@ -77,6 +79,9 @@ const getQueue = defineTool({
                 score: true,
                 status: true,
                 date: true,
+                // Modalidad, seniority, años pedidos y match: lo que hace falta para decidir en el chat
+                notes: true,
+                source: true,
             },
         });
         return { count: items.length, items };
@@ -326,6 +331,53 @@ const setDesiredPositions = defineTool({
     },
 });
 
+const reviewOffers = defineTool({
+    name: "review_offers",
+    description:
+        "Aprueba o descarta ofertas de la cola según lo que el usuario decidió en el chat (por ejemplo \"aprobá 1, 3 y 5-9\"). Solo cambia ofertas READY, APPROVED o NEEDS_USER. Al aprobar, KeyWords prepara la carta de presentación en segundo plano.",
+    input: z.object({
+        approve: z.array(z.string().min(1)).max(50).default([]),
+        skip: z.array(z.string().min(1)).max(50).default([]),
+    }),
+    run: async (ctx: AgentContext, input) => {
+        const skip = input.skip.filter((id) => !input.approve.includes(id));
+        const requested = [...input.approve, ...skip];
+        if (requested.length === 0) throw new ToolError("Indicá al menos una oferta para aprobar o descartar.");
+
+        const found = await prisma.jobApplication.findMany({
+            where: { id: { in: requested }, profileId: ctx.profileId, status: { in: ["READY", "APPROVED", "NEEDS_USER"] } },
+            select: { id: true, status: true },
+        });
+        const statusById = new Map(found.map((app) => [app.id, app.status]));
+        const toApprove = input.approve.filter((id) => statusById.has(id));
+        const toSkip = skip.filter((id) => statusById.has(id));
+
+        if (toApprove.length) {
+            await prisma.jobApplication.updateMany({ where: { id: { in: toApprove }, profileId: ctx.profileId }, data: { status: "APPROVED" } });
+        }
+        if (toSkip.length) {
+            await prisma.jobApplication.updateMany({ where: { id: { in: toSkip }, profileId: ctx.profileId }, data: { status: "SKIPPED" } });
+        }
+
+        // Igual que al aprobar desde la app: la carta se prepara sin hacer esperar la respuesta
+        const newlyApproved = toApprove.filter((id) => statusById.get(id) !== "APPROVED");
+        if (newlyApproved.length) {
+            after(async () => {
+                for (const id of newlyApproved) {
+                    const result = await generateCoverLetterForApplication(ctx.profileId, id);
+                    if (!result.ok) console.warn(`Cover letter not prepared for ${id}: ${result.code}`);
+                }
+            });
+        }
+
+        return {
+            approved: toApprove.length,
+            skipped: toSkip.length,
+            notFound: requested.filter((id) => !statusById.has(id)),
+        };
+    },
+});
+
 const searchNow = defineTool({
     name: "search_now",
     description:
@@ -349,4 +401,5 @@ export const agentTools: McpTool<AgentContext>[] = [
     getDesiredPositions,
     setDesiredPositions,
     searchNow,
+    reviewOffers,
 ];
