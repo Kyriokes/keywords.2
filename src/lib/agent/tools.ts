@@ -15,7 +15,7 @@ import { ToolError, defineTool, type McpTool } from "./mcp";
 const DESCRIPTION_PREVIEW = 12_000;
 
 export const SERVER_INSTRUCTIONS = `KeyWords guarda las ofertas y postulaciones del usuario.
-Flujo: get_candidate una vez por sesión, list_answer_templates una vez, después get_queue (status APPROVED) y para cada oferta get_application.
+Flujo: get_candidate y list_answer_templates una vez por sesión; search_now para traer ofertas nuevas; get_queue (status READY) para que el usuario elija en el chat y review_offers con lo que decida; después get_queue (status APPROVED) y para cada oferta get_application.
 Reglas: nunca envíes un formulario sin que el usuario lo confirme en el chat; no postules en LinkedIn ni en Indeed; no crees cuentas ni escribas contraseñas.
 Al terminar cada oferta llamá a record_result con lo que respondiste: APPLIED si se envió, NEEDS_USER si apareció un login, CAPTCHA o una pregunta que el usuario tiene que responder, SKIPPED si el usuario la descartó.
 Cuando el usuario responda una pregunta nueva, guardala con save_answer_template.`;
