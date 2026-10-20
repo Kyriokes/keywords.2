@@ -7,6 +7,7 @@ import { prepareCoverLetters } from "@/lib/applications/coverLetterBatch";
 import { createApplicationForProfile } from "@/lib/applications/create";
 import { runSavedSearch } from "@/lib/ingest/run";
 import { getDesiredRolesForProfile, saveDesiredRoles } from "@/lib/positions/save";
+import { loadSearchStats } from "@/lib/stats/searchStatsQuery";
 import { APPLICATION_STATUSES, APPLY_MODES, LIMITS, normalizeLink, sanitizeKeywords } from "@/lib/validation";
 import type { AgentContext } from "./auth";
 import { ToolError, defineTool, type McpTool } from "./mcp";
@@ -18,7 +19,8 @@ export const SERVER_INSTRUCTIONS = `KeyWords guarda las ofertas y postulaciones 
 Flujo: get_candidate y list_answer_templates una vez por sesión; search_now para traer ofertas nuevas; get_queue (status READY) para que el usuario elija en el chat y review_offers con lo que decida; después get_queue (status APPROVED) y para cada oferta get_application.
 Reglas: nunca envíes un formulario sin que el usuario lo confirme en el chat; no postules en LinkedIn ni en Indeed; no crees cuentas ni escribas contraseñas.
 Al terminar cada oferta llamá a record_result con lo que respondiste: APPLIED si se envió, NEEDS_USER si apareció un login, CAPTCHA o una pregunta que el usuario tiene que responder, SKIPPED si el usuario la descartó.
-Cuando el usuario responda una pregunta nueva, guardala con save_answer_template.`;
+Cuando el usuario responda una pregunta nueva, guardala con save_answer_template.
+Para la revisión semanal usá get_search_stats.`;
 
 async function findOwnedApplication(ctx: AgentContext, id: string) {
     const application = await prisma.jobApplication.findFirst({
@@ -403,6 +405,14 @@ const searchNow = defineTool({
     },
 });
 
+const getSearchStats = defineTool({
+    name: "get_search_stats",
+    description:
+        "Qué rindió la búsqueda en los últimos días: ofertas por portal, embudo hasta entrevistas, motivos de descarte, empresas y roles que más publican, últimas búsquedas y cómo se respondieron los formularios. Para la revisión semanal.",
+    input: z.object({ days: z.union([z.literal(7), z.literal(30), z.literal(90)]).default(30) }),
+    run: (ctx: AgentContext, input) => loadSearchStats(ctx.profileId, input.days),
+});
+
 export const agentTools: McpTool<AgentContext>[] = [
     getCandidate,
     getQueue,
@@ -415,4 +425,5 @@ export const agentTools: McpTool<AgentContext>[] = [
     setDesiredPositions,
     searchNow,
     reviewOffers,
+    getSearchStats,
 ];

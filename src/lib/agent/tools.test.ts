@@ -20,6 +20,8 @@ const positions = vi.hoisted(() => ({ getDesiredRolesForProfile: vi.fn(), saveDe
 vi.mock("@/lib/positions/save", () => positions);
 const search = vi.hoisted(() => ({ runSavedSearch: vi.fn() }));
 vi.mock("@/lib/ingest/run", () => search);
+const stats = vi.hoisted(() => ({ loadSearchStats: vi.fn() }));
+vi.mock("@/lib/stats/searchStatsQuery", () => stats);
 // Lo programado con after() se corre en el momento, para poder verlo en el test
 vi.mock("next/server", () => ({ after: (task: () => Promise<void>) => task() }));
 const coverLetters = vi.hoisted(() => ({ generateCoverLetterForApplication: vi.fn() }));
@@ -193,6 +195,23 @@ describe("agentTools", () => {
         const result = await callTool("search_now", {});
 
         expect(result).toEqual({ isError: true, text: "Ya se buscó hace poco. Podés volver a buscar en 30 min." });
+    });
+
+    it("get_search_stats consulta el perfil del token con el período pedido", async () => {
+        stats.loadSearchStats.mockResolvedValue({ days: 7, funnel: {}, sources: [] });
+
+        const result = await callTool("get_search_stats", { days: 7 });
+
+        expect(result.isError).toBe(false);
+        expect(stats.loadSearchStats).toHaveBeenCalledWith("profile-1", 7);
+    });
+
+    it("get_search_stats usa 30 días por defecto y rechaza otros períodos", async () => {
+        stats.loadSearchStats.mockResolvedValue({});
+        await callTool("get_search_stats", {});
+        expect(stats.loadSearchStats).toHaveBeenCalledWith("profile-1", 30);
+
+        expect((await callTool("get_search_stats", { days: 15 })).isError).toBe(true);
     });
 
     it("aprueba y descarta ofertas del perfil del token y prepara la carta de las aprobadas", async () => {
