@@ -29,22 +29,29 @@ export interface CoverLetterInput {
 }
 
 export function buildCoverLetterPrompt(input: CoverLetterInput): string {
+    // La carta modelo aporta datos de la experiencia; su tono suele ser más formal del que se busca
     const template = input.template?.trim()
-        ? `\nCARTA MODELO DEL CANDIDATO (respetá su tono, estructura y largo; adaptá el contenido a la oferta):
+        ? `\nCARTA MODELO DEL CANDIDATO (usala solo como fuente de datos sobre su experiencia; NO copies su formalidad, su saludo ni su largo):
 ###MODELO###
 ${input.template.slice(0, PROMPT_LIMITS.template)}
 ###MODELO###\n`
         : "";
+    const greeting = input.company
+        ? `"Hola equipo de ${input.company}," (en inglés: "Hi ${input.company} team,")`
+        : `"Hola," (en inglés: "Hi,")`;
 
-    return `Escribí una carta de presentación para esta postulación.
+    return `Escribí una carta de presentación breve para esta postulación, como la escribiría el candidato en un mail a una persona.
 
 REGLAS:
 - Escribila en el MISMO IDIOMA en que está escrita la oferta.
-- Entre 150 y 250 palabras, en 3 o 4 párrafos. Sin asunto, sin fecha, sin direcciones.
+- Entre 80 y 130 palabras, en 2 o 3 párrafos cortos.
+- Sin título, sin asunto, sin fecha, sin direcciones ni encabezados.
+- Empezá con un saludo simple: ${greeting}.
+- Tono natural y directo, en primera persona. Nada de fórmulas solemnes ni frases infladas como "Estimado equipo de selección", "Me dirijo a ustedes", "Dear Hiring Manager", "I am thrilled" o "sería un honor".
 - Usá SOLO experiencia y habilidades que aparezcan en el CV. NO inventes empresas, títulos, años ni logros.
-- Conectá 2 o 3 requisitos concretos de la oferta con experiencia real del CV.
+- Conectá 1 o 2 requisitos concretos de la oferta con experiencia real del CV.
 - Si falta un dato (nombre de la empresa, del reclutador), no uses marcadores como [Empresa]: escribí la frase sin ese dato.
-- Firmá con el nombre del candidato${input.candidateName ? ` (${input.candidateName})` : " si aparece en el CV"}.
+- Cerrá con una frase corta (por ejemplo, que te gustaría charlar) y el nombre del candidato${input.candidateName ? ` (${input.candidateName})` : " si aparece en el CV"}.
 - Respondé ÚNICAMENTE con el texto de la carta, sin comentarios antes ni después.
 ${template}
 PUESTO: ${input.jobTitle}${input.company ? `\nEMPRESA: ${input.company}` : ""}
@@ -72,6 +79,12 @@ export function cleanCoverLetter(raw: string, maxLength: number): string | null 
     if (/^(aqu[ií]|here|claro|sure|por supuesto)(\s.*)?:\s*$/i.test(lines[0]?.trim() ?? "")) {
         text = lines.slice(1).join("\n").trim();
     }
+
+    // Títulos y asunto que algunos modelos agregan aunque se les pida que no
+    const TITLE = /^(#+\s.*|\*\*[^*]+\*\*|(carta de presentaci[oó]n|cover letter|asunto|subject)(\s.*|:.*)?)$/i;
+    let rest = text.split("\n");
+    while (rest.length && (TITLE.test(rest[0].trim()) || !rest[0].trim())) rest = rest.slice(1);
+    text = rest.join("\n").trim();
 
     if (text.length < 200 || /\[(empresa|company|nombre|name)[^\]]*\]/i.test(text)) return null;
     return text.slice(0, maxLength);

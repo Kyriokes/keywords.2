@@ -23,6 +23,24 @@ describe("buildCoverLetterPrompt", () => {
         expect(buildCoverLetterPrompt({ ...base, template: "Hola, soy Ana..." })).toContain("Hola, soy Ana...");
     });
 
+    it("pide una carta breve y natural, sin título ni fórmulas solemnes", () => {
+        const prompt = buildCoverLetterPrompt(base);
+        expect(prompt).toContain("80 y 130 palabras");
+        expect(prompt).toContain("Sin título");
+        expect(prompt).not.toContain("150 y 250");
+    });
+
+    it("saluda al equipo de la empresa cuando se la conoce", () => {
+        expect(buildCoverLetterPrompt({ ...base, company: "Acme" })).toContain('"Hola equipo de Acme,"');
+        expect(buildCoverLetterPrompt(base)).toContain('"Hola,"');
+    });
+
+    it("usa la carta modelo solo como fuente de datos, no por su tono ni su largo", () => {
+        const prompt = buildCoverLetterPrompt({ ...base, template: "Estimado equipo de selección: me dirijo a ustedes..." });
+        expect(prompt).toContain("solo como fuente de datos");
+        expect(prompt).not.toContain("respetá su tono");
+    });
+
     it("recorta la descripción y el CV largos", () => {
         const prompt = buildCoverLetterPrompt({ ...base, jobDescription: "x".repeat(20_000), cvText: "y".repeat(20_000) });
         expect(prompt.length).toBeLessThan(14_000);
@@ -34,6 +52,18 @@ describe("cleanCoverLetter", () => {
         expect(cleanCoverLetter(`Aquí está tu carta:\n${LETTER}`, 20_000)).toBe(LETTER);
         expect(cleanCoverLetter("```\n" + LETTER + "\n```", 20_000)).toBe(LETTER);
         expect(cleanCoverLetter(`<think>pensando</think>\n${LETTER}`, 20_000)).toBe(LETTER);
+    });
+
+    it("saca los títulos y el asunto que agrega el modelo", () => {
+        for (const title of [
+            "Carta de presentación",
+            "# Cover Letter",
+            "**Carta de presentación – Frontend Developer**",
+            "Asunto: Postulación a Frontend Developer",
+            "Subject: Application for Frontend Developer",
+        ]) {
+            expect(cleanCoverLetter(`${title}\n\n${LETTER}`, 20_000), title).toBe(LETTER);
+        }
     });
 
     it("descarta respuestas cortas o con marcadores sin completar", () => {
