@@ -186,11 +186,20 @@ export const positionTitlesSchema = z
     )
     .refine((titles) => titles.length <= LIMITS.positions, `Podés guardar hasta ${LIMITS.positions} puestos.`);
 
+/** Cómo usa Claude una respuesta tipo: copiarla tal cual (datos) o reescribirla para la oferta (texto libre). */
+export const ANSWER_MODES = ["VERBATIM", "ADAPT"] as const;
+export type AnswerMode = typeof ANSWER_MODES[number];
+
+/** De dónde salió una respuesta enviada: plantilla tal cual, plantilla adaptada, la dio el usuario en el chat, la escribió Claude desde el CV. */
+export const ANSWER_ORIGINS = ["TEMPLATE", "ADAPTED", "NEW", "AGENT"] as const;
+export type AnswerOrigin = typeof ANSWER_ORIGINS[number];
+
 export const answerTemplateSchema = z.object({
     question: z.string().trim().min(1, "La pregunta no puede estar vacía.").max(LIMITS.question, "La pregunta es demasiado larga."),
     answer: z.string().trim().min(1, "La respuesta no puede estar vacía.").max(LIMITS.answer, "La respuesta es demasiado larga."),
     tags: z.unknown().optional().transform((value) => sanitizeKeywords(value ?? [], LIMITS.templateTags)),
     language: optionalText(10),
+    mode: z.enum(ANSWER_MODES).default("VERBATIM"),
 });
 
 export const coverLetterTemplateSchema = z.object({

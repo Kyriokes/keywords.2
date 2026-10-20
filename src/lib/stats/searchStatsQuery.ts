@@ -81,7 +81,7 @@ export async function loadSearchStats(profileId: string, days: StatsPeriod, now:
         }),
         prisma.applicationAnswer.findMany({
             where: { application: { profileId, date: { gte: since } } },
-            select: { question: true, templateId: true },
+            select: { question: true, templateId: true, origin: true },
         }),
         prisma.answerTemplate.findMany({ where: { profileId }, select: { id: true, question: true } }),
     ]);
@@ -105,8 +105,8 @@ export async function loadSearchStats(profileId: string, days: StatsPeriod, now:
             durationMs: run.durationMs,
             errors: run.errors,
         })),
-        // El origen de cada respuesta se guarda desde la Parte B; hasta entonces es "sin dato"
-        answers: summarizeAnswers(answers.map((answer) => ({ ...answer, origin: null })), templates),
+        // Las respuestas de antes de guardar el origen cuentan como "sin dato"
+        answers: summarizeAnswers(answers, templates),
         emptyReason: runs.length === 0 ? EMPTY_REASON : null,
     };
 }

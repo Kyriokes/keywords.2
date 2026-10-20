@@ -90,6 +90,12 @@ describe("answerTemplateSchema", () => {
         expect(answerTemplateSchema.safeParse({ question: " ", answer: "x" }).success).toBe(false);
         expect(answerTemplateSchema.safeParse({ question: "x", answer: "" }).success).toBe(false);
     });
+
+    it("las plantillas se copian tal cual salvo que se pida adaptarlas", () => {
+        expect(answerTemplateSchema.parse({ question: "Sueldo", answer: "2500 USD" }).mode).toBe("VERBATIM");
+        expect(answerTemplateSchema.parse({ question: "¿Por qué acá?", answer: "...", mode: "ADAPT" }).mode).toBe("ADAPT");
+        expect(answerTemplateSchema.safeParse({ question: "x", answer: "y", mode: "LIBRE" }).success).toBe(false);
+    });
 });
 
 describe("mediaAssetSchema", () => {

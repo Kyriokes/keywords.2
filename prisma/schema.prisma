@@ -273,6 +273,7 @@ model AnswerTemplate {
   answer    String   @db.Text
   tags      String[]
   language  String?
+  mode      String   @default("VERBATIM") // VERBATIM se copia tal cual; ADAPT Claude la reescribe para la oferta. Valores en src/lib/validation.ts (ANSWER_MODES)
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
@@ -296,6 +297,8 @@ model ApplicationAnswer {
 
   templateId String?
   template   AnswerTemplate? @relation(fields: [templateId], references: [id], onDelete: SetNull)
+
+  origin String? // De dónde salió la respuesta; valores en src/lib/validation.ts (ANSWER_ORIGINS)
 
   @@index([applicationId])
 }
