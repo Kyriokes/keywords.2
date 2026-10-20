@@ -124,4 +124,59 @@ describe("runJobSearch", () => {
             ["remotive:7", "PASSES", null],
         ]);
     });
+
+    it("registra todas las ofertas que llegaron con su decisión y cuenta por fuente", async () => {
+        const result = await runJobSearch("profile-1", settings);
+
+        expect(result.offers.map((offer) => [offer.externalId, offer.decision, offer.reason])).toEqual([
+            ["remotive:1", "QUEUED", null],
+            ["remotive:2", "REJECTED", "Solo para USA"],
+            ["remotive:3", "REJECTED", "Match 33% (mínimo 60%)"],
+            ["remotive:4", "QUEUED", null],
+        ]);
+        expect(result.offers[0]).toMatchObject({ source: "remotive", board: null, company: "Acme", roleName: "Full Stack Developer", score: 100 });
+        expect(result.fresh).toBe(4);
+        expect(result.bySource).toEqual({ remotive: { fetched: 4, fresh: 4, matchedRole: 4, passed: 2, rejected: 2, error: null } });
+    });
+
+    it("registra las de otros puestos con el rol detectado, sin contarlas como descartadas", async () => {
+        db.position.findMany.mockResolvedValue([{ title: "Backend Developer" }]);
+
+        const result = await runJobSearch("profile-1", settings);
+
+        expect(create).not.toHaveBeenCalled();
+        expect(result.offers.every((offer) => offer.decision === "OTHER_ROLE" && offer.roleName === "Full Stack Developer")).toBe(true);
+        expect(result.decisions).toEqual([]);
+        expect(result).toMatchObject({ matchedRole: 0, filtered: 0, bySource: { remotive: expect.objectContaining({ fresh: 4, matchedRole: 0 }) } });
+    });
+
+    it("registra las que ya estaban en la cuenta sin volver a evaluarlas", async () => {
+        db.jobApplication.findMany.mockResolvedValue([{ externalId: "remotive:1", link: "https://remotive.com/1" }]);
+
+        const result = await runJobSearch("profile-1", settings);
+
+        expect(result.offers[0]).toMatchObject({ externalId: "remotive:1", decision: "IN_ACCOUNT", roleName: null });
+        expect(result.fresh).toBe(3);
+        expect(result.bySource.remotive).toMatchObject({ fetched: 4, fresh: 3 });
+    });
+
+    it("sigue evaluando cuando la cola se llena y anota las que quedan para la próxima", async () => {
+        const result = await runJobSearch("profile-1", { ...settings, maxPerRun: 1 });
+
+        expect(create).toHaveBeenCalledTimes(1);
+        expect(result.offers.map((offer) => offer.decision)).toEqual(["QUEUED", "REJECTED", "REJECTED", "PASSES"]);
+        expect(result.deferred).toBe(1);
+        expect(result.summary).toBe(
+            "4 ofertas revisadas, 4 de tus puestos, 2 descartadas por los filtros, 1 nuevas en la cola. 1 más pasa los filtros y entra en la próxima búsqueda."
+        );
+    });
+
+    it("anota el error de la fuente que falló", async () => {
+        fetchAggregator.mockRejectedValue(new Error("503 Service Unavailable"));
+
+        const result = await runJobSearch("profile-1", settings);
+
+        expect(result.bySource).toEqual({ remotive: { fetched: 0, fresh: 0, matchedRole: 0, passed: 0, rejected: 0, error: "503 Service Unavailable" } });
+        expect(result.offers).toEqual([]);
+    });
 });
