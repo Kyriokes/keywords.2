@@ -112,6 +112,11 @@ Ambos scripts muestran a qué base apuntan antes de hacer nada. Para probarlos e
 pnpm test
 ```
 
+### 7. Estadísticas de la búsqueda
+- Cada búsqueda real (cron, "Buscar ahora" o `search_now`) guarda una fila en `SearchRun` y cada oferta que llegó, haya entrado o no a la cola, una en `IngestedOffer` con su decisión y su motivo.
+- Se ven en `/user/stats` ("Portales y resultados") y desde Claude con la herramienta `get_search_stats`.
+- Las ofertas que no se vuelven a ver en 90 días se borran.
+
 ## 🗺️ Roadmap y Visión Futura
 - **Fase 1:** Seguimiento core de candidatos, análisis de CVs y análisis de brechas (Actual).
 - **Fase 2:** Generación avanzada de Cartas de Presentación (Cover Letters) con IA adaptadas a descripciones de trabajo específicas.
