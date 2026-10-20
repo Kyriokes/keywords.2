@@ -44,7 +44,9 @@ export const AI_TELLS: ReadonlyArray<{ pattern: RegExp; label: string }> = [
 
 /** Etiquetas de las muletillas que aparecen en el texto, sin repetir, en el orden en que aparecen por primera vez. */
 export function findAiTells(text: string): string[] {
-    return AI_TELLS.map((tell) => ({ label: tell.label, index: text.search(tell.pattern) }))
+    // Los modelos suelen escribir el apóstrofo curvo (I’m); los patrones usan el recto
+    const plain = text.replace(/[‘’ʼ]/g, "'");
+    return AI_TELLS.map((tell) => ({ label: tell.label, index: plain.search(tell.pattern) }))
         .filter((found) => found.index >= 0)
         .sort((a, b) => a.index - b.index)
         .map((found) => found.label);

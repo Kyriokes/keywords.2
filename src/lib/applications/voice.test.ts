@@ -11,6 +11,14 @@ describe("findAiTells", () => {
         expect(findAiTells("We leverage data. Robust and seamless. Leverage again.")).toEqual(["leverage", "robust", "seamless"]);
     });
 
+    it("reconoce las muletillas escritas con apóstrofo curvo", () => {
+        expect(findAiTells("Dear Hiring Team, I’m writing to apply. I’d be a great fit.")).toEqual([
+            "Dear Hiring Manager",
+            "I am writing to",
+            "I would be a great fit",
+        ]);
+    });
+
     it("no marca nada en un texto normal", () => {
         expect(findAiTells("Hola equipo de Acme, vi el puesto de Full Stack. En KeyWords armé el pipeline de keywords con Node y Prisma.")).toEqual([]);
     });
