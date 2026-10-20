@@ -225,4 +225,21 @@ describe("agentTools", () => {
         expect(result.isError).toBe(true);
         expect(db.jobApplication.updateMany).not.toHaveBeenCalled();
     });
+
+    it("guarda el link del formulario donde se postuló, para sugerir seguir esa empresa", async () => {
+        db.jobApplication.findFirst.mockResolvedValue({ id: "app-1", cvId: null });
+
+        await callTool("record_result", { id: "app-1", status: "APPLIED", formUrl: "https://jobs.lever.co/webfx/123/apply" });
+
+        expect(db.jobApplication.update.mock.calls[0][0].data.applyUrl).toBe("https://jobs.lever.co/webfx/123/apply");
+    });
+
+    it("no guarda un link de formulario que no es http(s)", async () => {
+        db.jobApplication.findFirst.mockResolvedValue({ id: "app-1", cvId: null });
+
+        const result = await callTool("record_result", { id: "app-1", status: "APPLIED", formUrl: "javascript:alert(1)" });
+
+        expect(result.isError).toBe(true);
+        expect(db.jobApplication.update).not.toHaveBeenCalled();
+    });
 });

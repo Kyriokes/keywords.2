@@ -1,7 +1,7 @@
 'use client'
 
 import { useState } from 'react'
-import { FlaskConical, Loader2, Search } from 'lucide-react'
+import { FlaskConical, Loader2, Plus, Search } from 'lucide-react'
 import { useRouter } from 'next/navigation'
 import { toast } from 'sonner'
 import { Badge } from '@/components/ui/badge'
@@ -86,6 +86,10 @@ export function JobSearchPanel({ initial }: { initial: JobSearchSettingsData }) 
     const [lastRunAt, setLastRunAt] = useState(initial.lastRunAt)
     const [preview, setPreview] = useState<Preview | null>(null)
     const [busy, setBusy] = useState<'save' | 'run' | 'preview' | null>(null)
+
+    // Las sugeridas que ya se escribieron en la caja dejan de ofrecerse
+    const typedBoards = new Set(boards.split(/[\n,]/).map((board) => board.trim().toLowerCase()))
+    const suggestions = initial.suggestedBoards.filter((suggestion) => !typedBoards.has(suggestion.board))
 
     const toggle = (setter: typeof setSources) => (value: string) =>
         setter((current) => (current.includes(value) ? current.filter((item) => item !== value) : [...current, value]))
@@ -187,6 +191,30 @@ export function JobSearchPanel({ initial }: { initial: JobSearchSettingsData }) 
                         <strong>netflix</strong>, jobs.ashbyhq.com/<strong>notion</strong>, apply.workable.com/<strong>workstate</strong>,
                         jobs.smartrecruiters.com/<strong>Endava</strong> (de SmartRecruiters se toman las publicadas en Argentina).
                     </p>
+                    {suggestions.length > 0 && (
+                        <div className="space-y-2 rounded-md bg-muted px-3 py-2">
+                            <p className="text-xs text-muted-foreground">
+                                Empresas de tus ofertas que podrías seguir. Tocá para sumarlas y después guardá:
+                            </p>
+                            <div className="flex flex-wrap gap-2">
+                                {suggestions.map((suggestion) => (
+                                    <Button
+                                        key={suggestion.board}
+                                        type="button"
+                                        size="sm"
+                                        variant="outline"
+                                        onClick={() => setBoards((current) => (current.trim() ? `${current.trim()}\n${suggestion.board}` : suggestion.board))}
+                                    >
+                                        <Plus className="size-3.5" aria-hidden />
+                                        {suggestion.board}
+                                        <span className="text-muted-foreground">
+                                            ({suggestion.offers} {suggestion.offers === 1 ? 'oferta' : 'ofertas'})
+                                        </span>
+                                    </Button>
+                                ))}
+                            </div>
+                        </div>
+                    )}
                 </div>
 
                 <fieldset className="space-y-2">

@@ -3,6 +3,7 @@
 import { auth } from "@/auth"
 import prisma from "@/lib/prisma"
 import { revalidatePath } from "next/cache"
+import { suggestAtsBoards, type BoardSuggestion } from "@/lib/ingest/boards"
 import { DEFAULT_WORK_MODES } from "@/lib/ingest/eligibility"
 import { runJobSearch, runSavedSearch, type SearchDecision } from "@/lib/ingest/run"
 import { AGGREGATOR_SOURCES, parseAtsBoard } from "@/lib/ingest/sources"
@@ -19,7 +20,12 @@ export interface JobSearchSettingsData {
   seniorityPolicy: string
   lastRunAt: string | null
   lastResult: string | null
+  /** Empresas que aparecen en los links de las ofertas y todavía no se siguen. */
+  suggestedBoards: BoardSuggestion[]
 }
+
+// Ofertas recientes que se miran para sugerir empresas
+const SUGGESTION_SAMPLE = 1_000
 
 type EditableSettings = Pick<
   JobSearchSettingsData,
@@ -80,8 +86,21 @@ function parseSettings(data: EditableSettings): ActionResult<EditableSettings> {
 
 export async function getJobSearchSettings(): Promise<JobSearchSettingsData> {
   const profileId = await requireProfileId()
-  const settings = await prisma.jobSearchSettings.findUnique({ where: { profileId } })
-  if (!settings) return { ...DEFAULTS, lastRunAt: null, lastResult: null }
+  const [settings, offers] = await Promise.all([
+    prisma.jobSearchSettings.findUnique({ where: { profileId } }),
+    // Las más recientes alcanzan para ver de qué empresas vienen las ofertas
+    prisma.jobApplication.findMany({
+      where: { profileId },
+      orderBy: { date: "desc" },
+      take: SUGGESTION_SAMPLE,
+      select: { link: true, applyUrl: true }
+    })
+  ])
+  const suggestedBoards = suggestAtsBoards(
+    offers.map((offer) => [offer.link, offer.applyUrl]),
+    settings?.atsBoards ?? []
+  )
+  if (!settings) return { ...DEFAULTS, lastRunAt: null, lastResult: null, suggestedBoards }
   return {
     enabled: settings.enabled,
     sources: settings.sources,
@@ -91,7 +110,8 @@ export async function getJobSearchSettings(): Promise<JobSearchSettingsData> {
     workModes: settings.workModes,
     seniorityPolicy: settings.seniorityPolicy,
     lastRunAt: settings.lastRunAt?.toISOString() ?? null,
-    lastResult: settings.lastResult
+    lastResult: settings.lastResult,
+    suggestedBoards
   }
 }
 

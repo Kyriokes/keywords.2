@@ -7,7 +7,7 @@ import { generateCoverLetterForApplication } from "@/lib/applications/coverLette
 import { createApplicationForProfile } from "@/lib/applications/create";
 import { runSavedSearch } from "@/lib/ingest/run";
 import { getDesiredRolesForProfile, saveDesiredRoles } from "@/lib/positions/save";
-import { APPLICATION_STATUSES, APPLY_MODES, LIMITS, sanitizeKeywords } from "@/lib/validation";
+import { APPLICATION_STATUSES, APPLY_MODES, LIMITS, normalizeLink, sanitizeKeywords } from "@/lib/validation";
 import type { AgentContext } from "./auth";
 import { ToolError, defineTool, type McpTool } from "./mcp";
 
@@ -220,7 +220,7 @@ const addOffer = defineTool({
 const recordResult = defineTool({
     name: "record_result",
     description:
-        "Registra el resultado de una postulación: estado final, las preguntas del formulario con lo que se respondió, la carta enviada y, si se adaptó el CV, la versión usada. Reemplaza las respuestas guardadas antes para esa oferta.",
+        "Registra el resultado de una postulación: estado final, las preguntas del formulario con lo que se respondió, la carta enviada y, si se adaptó el CV, la versión usada. Reemplaza las respuestas guardadas antes para esa oferta. formUrl es el link del formulario donde se completó, si es distinto del applyUrl (por ejemplo, al seguir el botón de un portal hasta el sitio de la empresa).",
     input: z.object({
         id: z.string().min(1),
         status: z.enum(["APPLIED", "NEEDS_USER", "SKIPPED"]),
@@ -242,6 +242,18 @@ const recordResult = defineTool({
             })
             .optional(),
         notes: z.string().trim().max(LIMITS.notes).optional(),
+        formUrl: z
+            .string()
+            .max(LIMITS.link)
+            .transform((value, ctx) => {
+                const link = normalizeLink(value);
+                if (!link) {
+                    ctx.addIssue({ code: "custom", message: "formUrl tiene que ser un link http(s)." });
+                    return z.NEVER;
+                }
+                return link;
+            })
+            .optional(),
     }),
     run: async (ctx: AgentContext, input) => {
         const application = await findOwnedApplication(ctx, input.id);
@@ -280,6 +292,8 @@ const recordResult = defineTool({
                     status: input.status,
                     ...(input.status === "APPLIED" ? { appliedAt: new Date() } : {}),
                     ...(input.notes !== undefined ? { notes: input.notes || null } : {}),
+                    // El formulario real permite sugerir seguir a esa empresa en su ATS
+                    ...(input.formUrl ? { applyUrl: input.formUrl } : {}),
                     ...(variant ? { cvVariantId: variant.id } : {}),
                 },
             });
