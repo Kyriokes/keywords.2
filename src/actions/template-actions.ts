@@ -18,6 +18,10 @@ export interface AnswerTemplateItem {
   answer: string
   tags: string[]
   language: string | null
+  /** VERBATIM se copia tal cual; ADAPT Claude la reescribe para cada oferta. */
+  mode: string
+  /** Cuántas respuestas enviadas salieron de esta plantilla. */
+  usedCount: number
 }
 
 export interface CoverLetterTemplateItem {
@@ -52,13 +56,24 @@ async function requireProfileId(): Promise<string> {
 
 const done = () => revalidatePath("/user/templates")
 
+/** Cuántas veces se usó cada plantilla en una postulación enviada. */
+async function countUses(templateIds: string[]): Promise<Map<string, number>> {
+  if (templateIds.length === 0) return new Map()
+  const uses = await prisma.applicationAnswer.groupBy({
+    by: ["templateId"],
+    where: { templateId: { in: templateIds } },
+    _count: { _all: true }
+  })
+  return new Map(uses.flatMap((use) => (use.templateId ? [[use.templateId, use._count._all] as const] : [])))
+}
+
 export async function getTemplates(): Promise<TemplatesData> {
   const profileId = await requireProfileId()
   const [answers, coverLetters, media] = await Promise.all([
     prisma.answerTemplate.findMany({
       where: { profileId },
       orderBy: { updatedAt: "desc" },
-      select: { id: true, question: true, answer: true, tags: true, language: true }
+      select: { id: true, question: true, answer: true, tags: true, language: true, mode: true }
     }),
     // Una carta sin postulación es una plantilla
     prisma.coverLetter.findMany({
@@ -72,8 +87,9 @@ export async function getTemplates(): Promise<TemplatesData> {
       select: { id: true, kind: true, name: true, url: true }
     })
   ])
+  const uses = await countUses(answers.map((answer) => answer.id))
   return {
-    answers,
+    answers: answers.map((answer) => ({ ...answer, usedCount: uses.get(answer.id) ?? 0 })),
     coverLetters: coverLetters.map((letter) => ({ ...letter, name: letter.name ?? "Carta" })),
     media
   }
@@ -81,22 +97,26 @@ export async function getTemplates(): Promise<TemplatesData> {
 
 /** Crea la plantilla, o la actualiza si viene `id`. */
 export async function saveAnswerTemplate(
-  data: { id?: string; question: string; answer: string; tags?: string[]; language?: string }
+  data: { id?: string; question: string; answer: string; tags?: string[]; language?: string; mode?: string }
 ): Promise<ActionResult<AnswerTemplateItem>> {
   const profileId = await requireProfileId()
   const parsed = answerTemplateSchema.safeParse(data)
   if (!parsed.success) return { ok: false, code: "INVALID_INPUT", message: firstIssueMessage(parsed.error) }
   const input = parsed.data
-  const select = { id: true, question: true, answer: true, tags: true, language: true }
+  const select = { id: true, question: true, answer: true, tags: true, language: true, mode: true }
 
   if (data.id) {
     const updated = await prisma.answerTemplate.updateMany({
       where: { id: data.id, profileId },
-      data: { question: input.question, answer: input.answer, tags: input.tags, language: input.language ?? null }
+      data: { question: input.question, answer: input.answer, tags: input.tags, language: input.language ?? null, mode: input.mode }
     })
     if (updated.count === 0) return { ok: false, code: "NOT_FOUND", message: "La plantilla ya no existe." }
     done()
-    return { ok: true, data: await prisma.answerTemplate.findUniqueOrThrow({ where: { id: data.id }, select }) }
+    const [saved, uses] = await Promise.all([
+      prisma.answerTemplate.findUniqueOrThrow({ where: { id: data.id }, select }),
+      countUses([data.id])
+    ])
+    return { ok: true, data: { ...saved, usedCount: uses.get(data.id) ?? 0 } }
   }
 
   const total = await prisma.answerTemplate.count({ where: { profileId } })
@@ -104,11 +124,11 @@ export async function saveAnswerTemplate(
     return { ok: false, code: "LIMIT_REACHED", message: `Podés tener hasta ${LIMITS.answerTemplates} respuestas tipo.` }
   }
   const created = await prisma.answerTemplate.create({
-    data: { profileId, question: input.question, answer: input.answer, tags: input.tags, language: input.language },
+    data: { profileId, question: input.question, answer: input.answer, tags: input.tags, language: input.language, mode: input.mode },
     select
   })
   done()
-  return { ok: true, data: created }
+  return { ok: true, data: { ...created, usedCount: 0 } }
 }
 
 export async function deleteAnswerTemplate(id: string): Promise<void> {

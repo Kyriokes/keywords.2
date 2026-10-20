@@ -25,6 +25,8 @@ import {
     type AggregatorSource,
     type IngestedJob,
 } from "./sources";
+import { saveSearchRun } from "./record";
+import { emptySourceStats, sourceOf, type IngestedOfferInput, type RunTrigger, type SourceStats } from "./stats";
 
 /**
  * Pedidos compartidos entre los usuarios de una misma búsqueda: cada portal se consulta una
@@ -57,13 +59,21 @@ export interface SearchDecision {
 
 export interface SearchRunResult {
     fetched: number;
+    /** Las que no estaban en la cuenta. */
+    fresh: number;
     matchedRole: number;
     /** Ofertas de tus puestos descartadas por los filtros o por el match con el CV. */
     filtered: number;
     created: number;
+    /** Pasan los filtros pero la cola ya estaba llena: entran en la próxima búsqueda. */
+    deferred: number;
     decisions: SearchDecision[];
     errors: string[];
     summary: string;
+    /** Todas las ofertas que llegaron, con lo que pasó con cada una. Sin tope: es lo que se guarda en las estadísticas. */
+    offers: IngestedOfferInput[];
+    /** Qué trajo cada pedido; la clave es la del pedido ("remotive", "greenhouse:stripe"). */
+    bySource: Record<string, SourceStats>;
 }
 
 // Lo que se muestra en "Probar filtros"; más que esto no se llega a revisar a mano
@@ -107,7 +117,19 @@ export async function runJobSearch(
     cache: FetchCache = new Map(),
     opts: { dryRun?: boolean } = {}
 ): Promise<SearchRunResult> {
-    const result: SearchRunResult = { fetched: 0, matchedRole: 0, filtered: 0, created: 0, decisions: [], errors: [], summary: "" };
+    const result: SearchRunResult = {
+        fetched: 0,
+        fresh: 0,
+        matchedRole: 0,
+        filtered: 0,
+        created: 0,
+        deferred: 0,
+        decisions: [],
+        errors: [],
+        summary: "",
+        offers: [],
+        bySource: {},
+    };
     const finish = (summary: string) => ({ ...result, summary });
 
     const [positions, activeCv] = await Promise.all([
@@ -141,12 +163,16 @@ export async function runJobSearch(
     ];
     if (requests.length === 0) return finish("No hay fuentes activas.");
 
+    const sourceStats = (label: string) => (result.bySource[label] ??= emptySourceStats());
     const fetched = await Promise.all(
         requests.map(async (request) => {
+            const stats = sourceStats(request.label);
             try {
                 return await request.load();
             } catch (error) {
-                result.errors.push(`${request.label}: ${error instanceof Error ? error.message : String(error)}`);
+                const message = error instanceof Error ? error.message : String(error);
+                stats.error = message;
+                result.errors.push(`${request.label}: ${message}`);
                 return [];
             }
         })
@@ -175,7 +201,37 @@ export async function runJobSearch(
     // 3. Filtrar por puesto deseado, por los filtros y por score; lo que pasa entra a la cola
     const rules = toRules(settings);
     let passed = 0;
-    const decide = (job: IngestedJob, decision: Pick<SearchDecision, "status" | "reason" | "score" | "summary">) => {
+    let queueFull = false;
+    const statsOf = (job: IngestedJob) => {
+        const { source, board } = sourceOf(job);
+        return sourceStats(board ? `${source}:${board}` : source);
+    };
+    // Cada oferta que llegó queda anotada, entre o no a la cola
+    const record = (
+        job: IngestedJob,
+        offer: Omit<IngestedOfferInput, "externalId" | "source" | "board" | "title" | "company" | "location" | "url">
+    ) => {
+        const { source, board } = sourceOf(job);
+        result.offers.push({
+            externalId: ingestKey(job),
+            source,
+            board,
+            title: job.title,
+            company: job.company,
+            location: job.location,
+            url: job.url,
+            ...offer,
+        });
+        const stats = statsOf(job);
+        if (offer.decision === "REJECTED") stats.rejected++;
+        if (offer.decision === "QUEUED" || offer.decision === "PASSES") stats.passed++;
+    };
+    const decide = (
+        job: IngestedJob,
+        role: Pick<IngestedOfferInput, "roleName" | "seniority">,
+        decision: Pick<SearchDecision, "status" | "reason" | "score" | "summary">
+    ) => {
+        record(job, { ...role, decision: decision.status, reason: decision.reason, score: decision.score });
         if (decision.status === "REJECTED") result.filtered++;
         else passed++;
         if (result.decisions.length < MAX_DECISIONS) {
@@ -191,12 +247,22 @@ export async function runJobSearch(
     };
 
     for (const job of jobs) {
-        if (!opts.dryRun && result.created >= settings.maxPerRun) break;
-        if (seen.has(ingestKey(job)) || seen.has(job.url)) continue;
+        statsOf(job).fetched++;
+        if (seen.has(ingestKey(job)) || seen.has(job.url)) {
+            record(job, { roleName: null, seniority: null, decision: "IN_ACCOUNT", reason: null, score: null });
+            continue;
+        }
+        result.fresh++;
+        statsOf(job).fresh++;
 
         const { roleName, seniority } = await classifyJobTitle(job.title);
-        if (!roleName || !desired.has(roleName)) continue;
+        if (!roleName || !desired.has(roleName)) {
+            record(job, { roleName, seniority, decision: "OTHER_ROLE", reason: null, score: null });
+            continue;
+        }
         result.matchedRole++;
+        statsOf(job).matchedRole++;
+        const role = { roleName, seniority };
 
         const description = job.description.slice(0, LIMITS.jobDescription);
         const eligibility = checkEligibility(
@@ -204,7 +270,7 @@ export async function runJobSearch(
             rules
         );
         if (eligibility.blockers.length) {
-            decide(job, { status: "REJECTED", reason: eligibility.blockers.join(" · "), score: null, summary: eligibility.summary });
+            decide(job, role, { status: "REJECTED", reason: eligibility.blockers.join(" · "), score: null, summary: eligibility.summary });
             continue;
         }
 
@@ -212,7 +278,7 @@ export async function runJobSearch(
         const titleStack = (await detectKeywords(job.title)).filter((keyword) => STACK_CATEGORIES.has(keyword.category));
         if (titleStack.length && !titleStack.some((keyword) => cvKeywordSet.has(keyword.id))) {
             const reason = `El título pide ${titleStack.map((keyword) => keyword.name).join(", ")}`;
-            decide(job, { status: "REJECTED", reason, score: null, summary: eligibility.summary });
+            decide(job, role, { status: "REJECTED", reason, score: null, summary: eligibility.summary });
             continue;
         }
 
@@ -220,12 +286,20 @@ export async function runJobSearch(
         const score = computeMatchScore(keywords.map((keyword) => keyword.id), cvKeywordIds);
         if (score === null || score < eligibility.minScore) {
             const reason = score === null ? "Sin keywords para comparar con el CV" : `Match ${score}% (mínimo ${eligibility.minScore}%)`;
-            decide(job, { status: "REJECTED", reason, score, summary: eligibility.summary });
+            decide(job, role, { status: "REJECTED", reason, score, summary: eligibility.summary });
             continue;
         }
 
         if (opts.dryRun) {
-            decide(job, { status: "PASSES", reason: null, score, summary: eligibility.summary });
+            decide(job, role, { status: "PASSES", reason: null, score, summary: eligibility.summary });
+            continue;
+        }
+
+        // Con la cola llena se sigue evaluando: lo que pasa queda anotado y entra en la próxima búsqueda
+        if (result.created >= settings.maxPerRun) queueFull = true;
+        if (queueFull) {
+            result.deferred++;
+            decide(job, role, { status: "PASSES", reason: null, score, summary: eligibility.summary });
             continue;
         }
 
@@ -247,29 +321,49 @@ export async function runJobSearch(
         if (!created.ok) {
             if (created.code === "LIMIT_REACHED") {
                 result.errors.push(created.message);
-                break;
+                queueFull = true;
+                result.deferred++;
+                decide(job, role, { status: "PASSES", reason: null, score, summary: eligibility.summary });
+                continue;
             }
+            // No se pudo crear: como no quedó en la cuenta, se vuelve a intentar en la próxima búsqueda
+            record(job, { ...role, decision: "PASSES", reason: null, score });
             continue;
         }
         result.created++;
-        decide(job, { status: "QUEUED", reason: null, score, summary: eligibility.summary });
+        decide(job, role, { status: "QUEUED", reason: null, score, summary: eligibility.summary });
     }
 
     const outcome = opts.dryRun ? `${passed} entrarían a la cola` : `${result.created} nuevas en la cola`;
     return finish(
         `${result.fetched} ofertas revisadas, ${result.matchedRole} de tus puestos, ${result.filtered} descartadas por los filtros, ${outcome}.` +
-            (result.errors.length ? ` Fallaron: ${result.errors.map((error) => error.split(":")[0]).join(", ")}.` : "")
+            (result.errors.length ? ` Fallaron: ${result.errors.map((error) => error.split(":")[0]).join(", ")}.` : "") +
+            (result.deferred === 1 ? " 1 más pasa los filtros y entra en la próxima búsqueda." : "") +
+            (result.deferred > 1 ? ` ${result.deferred} más pasan los filtros y entran en la próxima búsqueda.` : "")
     );
 }
 
-/** Corre la búsqueda y guarda cuándo fue y qué encontró, para mostrarlo en la app. */
-export async function runAndRecord(profileId: string, settings: SearchSettingsInput, cache?: FetchCache) {
+/** Corre la búsqueda y guarda cuándo fue, qué encontró y qué trajo cada portal, para mostrarlo en la app. */
+export async function runAndRecord(
+    profileId: string,
+    settings: SearchSettingsInput,
+    cache?: FetchCache,
+    trigger: RunTrigger = "CRON"
+): Promise<SearchRunResult> {
+    const startedAt = Date.now();
     const result = await runJobSearch(profileId, settings, cache);
+    const durationMs = Date.now() - startedAt;
     if (result.errors.length) console.warn(`Job search for ${profileId}:`, result.errors);
     await prisma.jobSearchSettings.update({
         where: { profileId },
         data: { lastRunAt: new Date(), lastResult: result.summary },
     });
+    // Las estadísticas nunca rompen la búsqueda: las ofertas ya están en la cola
+    try {
+        await saveSearchRun(profileId, trigger, result, durationMs);
+    } catch (error) {
+        console.error("Search stats not saved:", error);
+    }
     return result;
 }
 
@@ -277,7 +371,10 @@ export async function runAndRecord(profileId: string, settings: SearchSettingsIn
 const MANUAL_RUN_INTERVAL_MS = 60 * 60 * 1000;
 
 /** Corre ahora la búsqueda guardada del perfil, como mucho una vez por hora. La usan "Buscar ahora" y el agente. */
-export async function runSavedSearch(profileId: string): Promise<ActionResult<{ summary: string; created: number }>> {
+export async function runSavedSearch(
+    profileId: string,
+    trigger: RunTrigger
+): Promise<ActionResult<{ summary: string; created: number }>> {
     const settings = await prisma.jobSearchSettings.findUnique({ where: { profileId } });
     if (!settings) return { ok: false, code: "NOT_CONFIGURED", message: "Guardá la configuración de la búsqueda antes de buscar." };
 
@@ -287,6 +384,6 @@ export async function runSavedSearch(profileId: string): Promise<ActionResult<{ 
         return { ok: false, code: "TOO_SOON", message: `Ya se buscó hace poco. Podés volver a buscar en ${minutes} min.` };
     }
 
-    const result = await runAndRecord(profileId, settings);
+    const result = await runAndRecord(profileId, settings, undefined, trigger);
     return { ok: true, data: { summary: result.summary, created: result.created } };
 }

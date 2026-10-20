@@ -8,6 +8,10 @@ export interface CV {
   text: string;
   uploadDate: number;
   isPrimary?: boolean;
+  /** Archivo para postular: idioma ("en" | "es"), link público y ruta en la PC. */
+  language?: string | null;
+  fileUrl?: string | null;
+  filePath?: string | null;
 }
 
 interface CvState {

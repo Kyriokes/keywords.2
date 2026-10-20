@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
     answerTemplateSchema,
     createApplicationSchema,
+    cvFileSchema,
     jobSearchSettingsSchema,
     mediaAssetSchema,
     parseApplicationDate,
@@ -89,6 +90,12 @@ describe("answerTemplateSchema", () => {
         expect(answerTemplateSchema.safeParse({ question: " ", answer: "x" }).success).toBe(false);
         expect(answerTemplateSchema.safeParse({ question: "x", answer: "" }).success).toBe(false);
     });
+
+    it("las plantillas se copian tal cual salvo que se pida adaptarlas", () => {
+        expect(answerTemplateSchema.parse({ question: "Sueldo", answer: "2500 USD" }).mode).toBe("VERBATIM");
+        expect(answerTemplateSchema.parse({ question: "¿Por qué acá?", answer: "...", mode: "ADAPT" }).mode).toBe("ADAPT");
+        expect(answerTemplateSchema.safeParse({ question: "x", answer: "y", mode: "LIBRE" }).success).toBe(false);
+    });
 });
 
 describe("mediaAssetSchema", () => {
@@ -121,3 +128,30 @@ describe("jobSearchSettingsSchema", () => {
         expect(jobSearchSettingsSchema.safeParse({ ...base, maxPerRun: 61, workModes: ["REMOTE"], seniorityPolicy: "ANY" }).success).toBe(false);
     });
 });
+
+describe("cvFileSchema", () => {
+    it("acepta idioma, link público y ruta local del PDF", () => {
+        expect(
+            cvFileSchema.parse({
+                language: "es",
+                fileUrl: "portfoliosergiofb.vercel.app/CV_SERGIO_FERRARI_BRYCE.pdf",
+                filePath: "  G:\\Portfolio-2\\public\\CV_SERGIO_FERRARI_BRYCE.pdf ",
+            })
+        ).toEqual({
+            language: "es",
+            fileUrl: "https://portfoliosergiofb.vercel.app/CV_SERGIO_FERRARI_BRYCE.pdf",
+            filePath: "G:\\Portfolio-2\\public\\CV_SERGIO_FERRARI_BRYCE.pdf",
+        });
+    });
+
+    it("deja vacío lo que no se completa", () => {
+        expect(cvFileSchema.parse({ language: null, fileUrl: "", filePath: "  " })).toEqual({ language: null, fileUrl: null, filePath: null });
+    });
+
+    it("rechaza idiomas desconocidos, links que no son web y rutas con saltos de línea", () => {
+        expect(cvFileSchema.safeParse({ language: "fr", fileUrl: "", filePath: "" }).success).toBe(false);
+        expect(cvFileSchema.safeParse({ language: "en", fileUrl: "javascript:alert(1)", filePath: "" }).success).toBe(false);
+        expect(cvFileSchema.safeParse({ language: "en", fileUrl: "", filePath: "C:\\cv.pdf\nrm -rf" }).success).toBe(false);
+    });
+});
+

@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { buildCoverLetterPrompt, cleanCoverLetter, computeMatchScore } from "./prepare";
+import { WRITING_GUIDE } from "./voice";
 
 const LETTER = "Estimado equipo:\n\n" + "Me interesa mucho el puesto y creo que mi experiencia encaja. ".repeat(6) + "\n\nSaludos,\nAna";
 
@@ -43,7 +44,21 @@ describe("buildCoverLetterPrompt", () => {
 
     it("recorta la descripción y el CV largos", () => {
         const prompt = buildCoverLetterPrompt({ ...base, jobDescription: "x".repeat(20_000), cvText: "y".repeat(20_000) });
-        expect(prompt.length).toBeLessThan(14_000);
+        expect(prompt.length).toBeLessThan(16_000);
+    });
+
+    it("incluye la guía de redacción y la lista de muletillas a evitar", () => {
+        const prompt = buildCoverLetterPrompt(base);
+        expect(prompt).toContain(WRITING_GUIDE);
+        expect(prompt).toContain("No uses estas frases ni parecidas: me dirijo a ustedes, estimado/a,");
+        expect(prompt).not.toContain("Tono natural y directo");
+    });
+
+    it("pide reescribir sin las muletillas de la versión anterior", () => {
+        expect(buildCoverLetterPrompt({ ...base, avoid: ["leverage", "fast-paced"] })).toContain(
+            "La versión anterior usó: leverage, fast-paced. Reescribila sin esas frases ni equivalentes."
+        );
+        expect(buildCoverLetterPrompt(base)).not.toContain("La versión anterior");
     });
 });
 

@@ -3,6 +3,7 @@ import Link from "next/link";
 import { auth } from "@/auth";
 import { CvDropBox } from "@/components/CvDropBox";
 import { CvList } from "@/components/CvList";
+import { CvFiles } from "@/components/CvFiles";
 import { DesiredPositions } from "@/components/DesiredPositions";
 
 export const metadata: Metadata = { title: "Mi perfil" };
@@ -25,6 +26,7 @@ export default async function ProfilePage() {
                     </p>
                     <CvDropBox />
                     <CvList />
+                    <CvFiles />
                 </div>
                 
                 <div className="space-y-6">

@@ -136,7 +136,7 @@ export async function saveJobSearchSettings(data: EditableSettings): Promise<Act
 /** Corre la búsqueda ahora mismo para el usuario, sin esperar al cron. */
 export async function runJobSearchNow(): Promise<ActionResult<{ summary: string; created: number }>> {
   const profileId = await requireProfileId()
-  const result = await runSavedSearch(profileId)
+  const result = await runSavedSearch(profileId, "MANUAL")
   if (result.ok) revalidatePath("/user/queue")
   return result
 }

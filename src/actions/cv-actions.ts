@@ -3,7 +3,7 @@
 import { auth } from "@/auth"
 import prisma from "@/lib/prisma"
 import { revalidatePath } from "next/cache"
-import { LIMITS, uploadCvSchema, firstIssueMessage, type ActionResult } from "@/lib/validation"
+import { LIMITS, cvFileSchema, uploadCvSchema, firstIssueMessage, type ActionResult } from "@/lib/validation"
 import { detectKeywords, keywordName, lookupTerms } from "@/lib/keywords/dictionary"
 
 // Las keywords de un CV salen siempre del diccionario. Si el CV llega sin texto (por ejemplo,
@@ -93,6 +93,9 @@ export async function getCVs() {
     text: cv.text,
     uploadDate: cv.uploadDate.getTime(),
     isPrimary: cv.isPrimary,
+    language: cv.language,
+    fileUrl: cv.fileUrl,
+    filePath: cv.filePath,
     keywords: cv.keywords.filter((k) => !k.keyword.isBlocked).map((k) => keywordName(k.keyword))
   }))
 }
@@ -164,4 +167,25 @@ export async function setPrimaryCV(cvId: string) {
 
   revalidatePath('/user/profile')
   return { success: true }
+}
+
+/** Guarda el archivo de un CV para postular: idioma, link público al PDF y ruta en la PC. */
+export async function updateCvFile(
+  cvId: string,
+  data: { language: string | null; fileUrl: string; filePath: string }
+): Promise<ActionResult> {
+  const session = await auth()
+  if (!session?.user?.id) throw new Error("Unauthorized")
+
+  const parsed = cvFileSchema.safeParse(data)
+  if (!parsed.success) return { ok: false, code: "INVALID_INPUT", message: firstIssueMessage(parsed.error) }
+
+  const profile = await prisma.profile.findUnique({ where: { userId: session.user.id }, select: { id: true } })
+  if (!profile) throw new Error("Profile not found")
+
+  const { count } = await prisma.cV.updateMany({ where: { id: cvId, profileId: profile.id }, data: parsed.data })
+  if (count === 0) return { ok: false, code: "NOT_FOUND", message: "El CV ya no existe." }
+
+  revalidatePath('/user/profile')
+  return { ok: true, data: undefined }
 }

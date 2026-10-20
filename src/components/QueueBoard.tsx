@@ -1,7 +1,7 @@
 'use client'
 
 import { useState } from 'react'
-import { Check, CheckCheck, ExternalLink, Loader2, RotateCcw, Send, Sparkles, X } from 'lucide-react'
+import { Check, CheckCheck, ExternalLink, Loader2, PhoneCall, RotateCcw, Send, Sparkles, X } from 'lucide-react'
 import { toast } from 'sonner'
 import { Badge } from '@/components/ui/badge'
 import { Input } from '@/components/ui/input'
@@ -47,7 +47,24 @@ const ACTIONS: Record<string, StatusAction[]> = {
         { status: 'APPROVED', label: 'Reintentar con Claude', icon: RotateCcw, variant: 'outline' },
         { status: 'SKIPPED', label: 'Descartar', icon: X, variant: 'ghost' },
     ],
+    // Lo que respondió la empresa: sin esto las estadísticas no saben qué portal termina en entrevista
+    APPLIED: [
+        { status: 'INTERVIEW', label: 'Me llamaron a entrevista', icon: PhoneCall },
+        { status: 'REJECTED', label: 'Me rechazaron', icon: X, variant: 'ghost' },
+    ],
+    INTERVIEW: [{ status: 'REJECTED', label: 'Me rechazaron', icon: X, variant: 'ghost' }],
 }
+
+type QueueCardVariant = 'pending' | 'submitted'
+type OnStatus = (item: QueueItem, status: ApplicationStatusValue) => void
+
+/** Estados que tienen botones en cada pestaña: las enviadas solo marcan la respuesta de la empresa. */
+const STATUSES_WITH_ACTIONS: Record<QueueCardVariant, string[]> = {
+    pending: ['READY', 'APPROVED', 'NEEDS_USER'],
+    submitted: ['APPLIED', 'INTERVIEW'],
+}
+
+const RESULT_BADGES: Record<string, string> = { INTERVIEW: 'Entrevista', REJECTED: 'Rechazada' }
 
 /** Carta de una oferta pendiente: la que Claude va a usar. Se puede generar con la IA y editar. */
 function CoverLetterEditor({ item }: { item: QueueItem }) {
@@ -114,11 +131,12 @@ function CoverLetterEditor({ item }: { item: QueueItem }) {
     )
 }
 
-function QueueCard({ item, onStatus }: { item: QueueItem; onStatus?: (item: QueueItem, status: ApplicationStatusValue) => void }) {
+function QueueCard({ item, variant, onStatus }: { item: QueueItem; variant: QueueCardVariant; onStatus: OnStatus }) {
     const formUrl = item.applyUrl ?? item.link
     // En las pendientes la carta se edita aparte; en las enviadas es parte de lo que se envió
-    const isPending = !!onStatus
+    const isPending = variant === 'pending'
     const hasRecord = item.answers.length > 0 || !!item.cvVariantName || (!isPending && !!item.coverLetter)
+    const actions = STATUSES_WITH_ACTIONS[variant].includes(item.status) ? ACTIONS[item.status] : undefined
 
     return (
         <li className="space-y-3 rounded-lg border bg-card p-4 text-card-foreground shadow-sm">
@@ -131,6 +149,7 @@ function QueueCard({ item, onStatus }: { item: QueueItem; onStatus?: (item: Queu
                     </p>
                 </div>
                 <div className="flex flex-wrap gap-2">
+                    {!isPending && RESULT_BADGES[item.status] && <Badge>{RESULT_BADGES[item.status]}</Badge>}
                     {item.score !== null && <Badge variant="secondary">Match {item.score}%</Badge>}
                     {item.applyMode && <Badge variant="outline">{APPLY_MODE_LABELS[item.applyMode] ?? item.applyMode}</Badge>}
                 </div>
@@ -182,9 +201,9 @@ function QueueCard({ item, onStatus }: { item: QueueItem; onStatus?: (item: Queu
 
             {isPending && <CoverLetterEditor item={item} />}
 
-            {onStatus && ACTIONS[item.status] && (
+            {actions && (
                 <div className="flex flex-wrap gap-2">
-                    {ACTIONS[item.status].map((action) => (
+                    {actions.map((action) => (
                         <Button key={action.status} size="sm" variant={action.variant ?? 'default'} onClick={() => onStatus(item, action.status)}>
                             <action.icon className="size-4" />
                             {action.label}
@@ -241,12 +260,22 @@ function BulkApprove({ ready, onApproved }: { ready: QueueItem[]; onApproved: (m
     )
 }
 
-function QueueList({ items, empty, onStatus }: { items: QueueItem[]; empty: string; onStatus?: (item: QueueItem, status: ApplicationStatusValue) => void }) {
+function QueueList({
+    items,
+    empty,
+    variant = 'pending',
+    onStatus,
+}: {
+    items: QueueItem[]
+    empty: string
+    variant?: QueueCardVariant
+    onStatus: OnStatus
+}) {
     if (items.length === 0) return <p className="py-6 text-sm text-muted-foreground">{empty}</p>
     return (
         <ul className="space-y-3">
             {items.map((item) => (
-                <QueueCard key={item.id} item={item} onStatus={onStatus} />
+                <QueueCard key={item.id} item={item} variant={variant} onStatus={onStatus} />
             ))}
         </ul>
     )
@@ -254,6 +283,7 @@ function QueueList({ items, empty, onStatus }: { items: QueueItem[]; empty: stri
 
 export function QueueBoard({ initial }: { initial: QueueData }) {
     const [pending, setPending] = useState(initial.pending)
+    const [submitted, setSubmitted] = useState(initial.submitted)
 
     const changeStatus = async (item: QueueItem, status: ApplicationStatusValue) => {
         try {
@@ -264,6 +294,16 @@ export function QueueBoard({ initial }: { initial: QueueData }) {
                     ? current.map((entry) => (entry.id === item.id ? { ...entry, status } : entry))
                     : current.filter((entry) => entry.id !== item.id)
             )
+        } catch {
+            toast.error('No se pudo cambiar el estado')
+        }
+    }
+
+    // Una enviada sigue en su lista: solo cambia la respuesta de la empresa
+    const changeSubmittedStatus = async (item: QueueItem, status: ApplicationStatusValue) => {
+        try {
+            await updateApplicationStatus(item.id, status)
+            setSubmitted((current) => current.map((entry) => (entry.id === item.id ? { ...entry, status } : entry)))
         } catch {
             toast.error('No se pudo cambiar el estado')
         }
@@ -288,7 +328,7 @@ export function QueueBoard({ initial }: { initial: QueueData }) {
                 <TabsTrigger value="ready">Por aprobar ({ready.length})</TabsTrigger>
                 <TabsTrigger value="approved">Aprobadas ({approved.length})</TabsTrigger>
                 <TabsTrigger value="needs-user">Requieren acción ({needsUser.length})</TabsTrigger>
-                <TabsTrigger value="submitted">Enviadas por Claude ({initial.submitted.length})</TabsTrigger>
+                <TabsTrigger value="submitted">Enviadas por Claude ({submitted.length})</TabsTrigger>
             </TabsList>
             <TabsContent value="ready">
                 <BulkApprove ready={ready} onApproved={markApproved} />
@@ -305,7 +345,12 @@ export function QueueBoard({ initial }: { initial: QueueData }) {
                 <QueueList items={needsUser} onStatus={changeStatus} empty="Nada trabado: Claude no necesitó ayuda." />
             </TabsContent>
             <TabsContent value="submitted">
-                <QueueList items={initial.submitted} empty="Claude todavía no envió ninguna postulación." />
+                <QueueList
+                    items={submitted}
+                    variant="submitted"
+                    onStatus={changeSubmittedStatus}
+                    empty="Claude todavía no envió ninguna postulación."
+                />
             </TabsContent>
         </Tabs>
     )

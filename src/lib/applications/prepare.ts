@@ -2,6 +2,7 @@
  * Preparación de una postulación antes de que el agente la complete: qué tan bien encaja con
  * el CV y el borrador de la carta de presentación. Funciones puras, sin base ni IA.
  */
+import { AI_TELLS, WRITING_GUIDE } from "./voice";
 
 /** Porcentaje (0-100) de keywords de la oferta que están en el CV; null si no hay con qué comparar. */
 export function computeMatchScore(offerKeywordIds: string[], cvKeywordIds: Iterable<string>): number | null {
@@ -26,6 +27,8 @@ export interface CoverLetterInput {
     candidateName?: string | null;
     /** Carta modelo del usuario: se respeta su tono y estructura. */
     template?: string | null;
+    /** Muletillas que tuvo la versión anterior: se pide reescribirla sin ellas. */
+    avoid?: string[];
 }
 
 export function buildCoverLetterPrompt(input: CoverLetterInput): string {
@@ -35,6 +38,10 @@ export function buildCoverLetterPrompt(input: CoverLetterInput): string {
 ###MODELO###
 ${input.template.slice(0, PROMPT_LIMITS.template)}
 ###MODELO###\n`
+        : "";
+    // Segundo intento: se nombran las muletillas que tuvo la primera versión
+    const avoid = input.avoid?.length
+        ? `\n- La versión anterior usó: ${input.avoid.join(", ")}. Reescribila sin esas frases ni equivalentes.`
         : "";
     const greeting = input.company
         ? `"Hola equipo de ${input.company}," (en inglés: "Hi ${input.company} team,")`
@@ -47,12 +54,15 @@ REGLAS:
 - Entre 80 y 130 palabras, en 2 o 3 párrafos cortos.
 - Sin título, sin asunto, sin fecha, sin direcciones ni encabezados.
 - Empezá con un saludo simple: ${greeting}.
-- Tono natural y directo, en primera persona. Nada de fórmulas solemnes ni frases infladas como "Estimado equipo de selección", "Me dirijo a ustedes", "Dear Hiring Manager", "I am thrilled" o "sería un honor".
 - Usá SOLO experiencia y habilidades que aparezcan en el CV. NO inventes empresas, títulos, años ni logros.
 - Conectá 1 o 2 requisitos concretos de la oferta con experiencia real del CV.
 - Si falta un dato (nombre de la empresa, del reclutador), no uses marcadores como [Empresa]: escribí la frase sin ese dato.
 - Cerrá con una frase corta (por ejemplo, que te gustaría charlar) y el nombre del candidato${input.candidateName ? ` (${input.candidateName})` : " si aparece en el CV"}.
 - Respondé ÚNICAMENTE con el texto de la carta, sin comentarios antes ni después.
+
+CÓMO ESCRIBIR:
+${WRITING_GUIDE}
+- No uses estas frases ni parecidas: ${AI_TELLS.map((tell) => tell.label).join(", ")}.${avoid}
 ${template}
 PUESTO: ${input.jobTitle}${input.company ? `\nEMPRESA: ${input.company}` : ""}
 

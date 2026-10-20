@@ -29,6 +29,10 @@ export default async function QueuePage() {
                     <Link href="/user/connect" className="font-medium text-primary underline-offset-4 hover:underline">
                         Conectar Claude Code
                     </Link>
+                    {" · "}
+                    <Link href="/user/stats" className="font-medium text-primary underline-offset-4 hover:underline">
+                        Portales y resultados
+                    </Link>
                 </p>
             </div>
             <JobSearchPanel initial={searchSettings} />

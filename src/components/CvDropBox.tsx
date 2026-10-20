@@ -129,7 +129,7 @@ export function CvDropBox() {
 
         {!isBusy && !isDragging && (
            <p className="text-xs text-muted-foreground mt-4">
-             Se marcará automáticamente como activo
+             El primero que subas queda activo. Para cambiarlo, tocá otro en la lista
            </p>
         )}
       </motion.div>

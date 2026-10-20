@@ -20,22 +20,26 @@ import {
     type MediaAssetItem,
     type TemplatesData,
 } from '@/actions/template-actions'
+import type { AnswerMode } from '@/lib/validation'
 
-// Las preguntas que más aparecen en los formularios: un clic y queda lista para responder
-const COMMON_QUESTIONS: { question: string; tags: string[] }[] = [
-    { question: 'Pretensión salarial', tags: ['salary'] },
-    { question: '¿Necesitás sponsorship de visa para trabajar en EE.UU.?', tags: ['visa'] },
-    { question: '¿Estás autorizado a trabajar en el país de la oferta?', tags: ['visa', 'authorization'] },
-    { question: 'Disponibilidad para empezar / preaviso', tags: ['notice'] },
-    { question: 'Nivel de inglés', tags: ['english'] },
-    { question: 'Ubicación y zona horaria', tags: ['location'] },
-    { question: 'Perfil de LinkedIn', tags: ['links'] },
-    { question: 'Portfolio o GitHub', tags: ['links'] },
-    { question: '¿Por qué te interesa este puesto?', tags: ['motivation'] },
-    { question: 'Teléfono de contacto', tags: ['contact'] },
+// Las preguntas que más aparecen en los formularios: un clic y queda lista para responder.
+// Los datos se copian tal cual; los textos libres Claude los adapta a cada oferta.
+const COMMON_QUESTIONS: { question: string; tags: string[]; mode: AnswerMode }[] = [
+    { question: 'Pretensión salarial', tags: ['salary'], mode: 'VERBATIM' },
+    { question: '¿Necesitás sponsorship de visa para trabajar en EE.UU.?', tags: ['visa'], mode: 'VERBATIM' },
+    { question: '¿Estás autorizado a trabajar en el país de la oferta?', tags: ['visa', 'authorization'], mode: 'VERBATIM' },
+    { question: 'Disponibilidad para empezar / preaviso', tags: ['notice'], mode: 'VERBATIM' },
+    { question: 'Nivel de inglés', tags: ['english'], mode: 'VERBATIM' },
+    { question: 'Ubicación y zona horaria', tags: ['location'], mode: 'VERBATIM' },
+    { question: 'Perfil de LinkedIn', tags: ['links'], mode: 'VERBATIM' },
+    { question: 'Portfolio o GitHub', tags: ['links'], mode: 'VERBATIM' },
+    { question: '¿Por qué te interesa este puesto?', tags: ['motivation'], mode: 'ADAPT' },
+    { question: 'Contanos un proyecto del que estés orgulloso', tags: ['project'], mode: 'ADAPT' },
+    { question: 'Contanos sobre vos', tags: ['about'], mode: 'ADAPT' },
+    { question: 'Teléfono de contacto', tags: ['contact'], mode: 'VERBATIM' },
 ]
 
-const emptyAnswer = { id: undefined as string | undefined, question: '', answer: '', tags: '' }
+const emptyAnswer = { id: undefined as string | undefined, question: '', answer: '', tags: '', mode: 'VERBATIM' as string }
 const emptyLetter = { id: undefined as string | undefined, name: '', text: '' }
 
 function Section({ title, description, children }: { title: string; description: string; children: React.ReactNode }) {
@@ -71,6 +75,7 @@ export function TemplatesManager({ initial }: { initial: TemplatesData }) {
                 question: answerDraft.question,
                 answer: answerDraft.answer,
                 tags: answerDraft.tags.split(',').map((tag) => tag.trim()).filter(Boolean),
+                mode: answerDraft.mode,
             })
             if (!result.ok) return void toast.error(result.message)
             setAnswers((current) => [result.data, ...current.filter((item) => item.id !== result.data.id)])
@@ -147,7 +152,9 @@ export function TemplatesManager({ initial }: { initial: TemplatesData }) {
                                         key={item.question}
                                         size="sm"
                                         variant="outline"
-                                        onClick={() => setAnswerDraft({ ...emptyAnswer, question: item.question, tags: item.tags.join(', ') })}
+                                        onClick={() =>
+                                            setAnswerDraft({ ...emptyAnswer, question: item.question, tags: item.tags.join(', '), mode: item.mode })
+                                        }
                                     >
                                         <Plus className="size-3" />
                                         {item.question}
@@ -173,6 +180,18 @@ export function TemplatesManager({ initial }: { initial: TemplatesData }) {
                             onChange={(event) => setAnswerDraft({ ...answerDraft, answer: event.target.value })}
                             placeholder="Ej: USD 4.000 mensuales, negociable según beneficios"
                         />
+                        <label className="flex items-center gap-2 text-sm">
+                            <input
+                                type="checkbox"
+                                className="size-4"
+                                checked={answerDraft.mode === 'ADAPT'}
+                                onChange={(event) => setAnswerDraft({ ...answerDraft, mode: event.target.checked ? 'ADAPT' : 'VERBATIM' })}
+                            />
+                            Claude la adapta a cada oferta (mismo contenido, redactada para ese puesto)
+                        </label>
+                        <p className="text-xs text-muted-foreground">
+                            Dejala sin marcar para datos como sueldo, visa o años: esos se copian tal cual.
+                        </p>
                     </div>
                     <div className="space-y-2">
                         <Label htmlFor="answerTags">Etiquetas (opcional, separadas por coma)</Label>
@@ -203,11 +222,17 @@ export function TemplatesManager({ initial }: { initial: TemplatesData }) {
                                 <div className="min-w-0 space-y-1">
                                     <p className="font-medium">{item.question}</p>
                                     <p className="whitespace-pre-wrap text-sm text-muted-foreground">{item.answer}</p>
-                                    {item.tags.length > 0 && (
-                                        <div className="flex flex-wrap gap-1 pt-1">
+                                    {(item.tags.length > 0 || item.mode === 'ADAPT' || item.usedCount > 0) && (
+                                        <div className="flex flex-wrap items-center gap-1 pt-1">
                                             {item.tags.map((tag) => (
                                                 <Badge key={tag} variant="secondary">{tag}</Badge>
                                             ))}
+                                            {item.mode === 'ADAPT' && <Badge variant="outline">se adapta a cada oferta</Badge>}
+                                            {item.usedCount > 0 && (
+                                                <span className="text-xs text-muted-foreground">
+                                                    {item.usedCount === 1 ? 'usada 1 vez' : `usada ${item.usedCount} veces`}
+                                                </span>
+                                            )}
                                         </div>
                                     )}
                                 </div>
@@ -216,7 +241,15 @@ export function TemplatesManager({ initial }: { initial: TemplatesData }) {
                                         variant="ghost"
                                         size="icon"
                                         aria-label="Editar"
-                                        onClick={() => setAnswerDraft({ id: item.id, question: item.question, answer: item.answer, tags: item.tags.join(', ') })}
+                                        onClick={() =>
+                                            setAnswerDraft({
+                                                id: item.id,
+                                                question: item.question,
+                                                answer: item.answer,
+                                                tags: item.tags.join(', '),
+                                                mode: item.mode,
+                                            })
+                                        }
                                     >
                                         <Pencil className="size-4" />
                                     </Button>

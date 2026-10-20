@@ -6,8 +6,11 @@ const db = vi.hoisted(() => ({
     jobApplication: { findFirst: vi.fn(), findMany: vi.fn(), findUniqueOrThrow: vi.fn(), update: vi.fn(), updateMany: vi.fn() },
     answerTemplate: { findFirst: vi.fn(), findMany: vi.fn(), count: vi.fn(), create: vi.fn(), update: vi.fn() },
     cvVariant: { create: vi.fn() },
-    applicationAnswer: { deleteMany: vi.fn(), createMany: vi.fn() },
-    coverLetter: { upsert: vi.fn() },
+    applicationAnswer: { deleteMany: vi.fn(), createMany: vi.fn(), groupBy: vi.fn(), findMany: vi.fn() },
+    coverLetter: { upsert: vi.fn(), findMany: vi.fn() },
+    user: { findUnique: vi.fn() },
+    cV: { findFirst: vi.fn(), findMany: vi.fn() },
+    mediaAsset: { findMany: vi.fn() },
     $transaction: vi.fn(),
 }));
 
@@ -17,11 +20,14 @@ const positions = vi.hoisted(() => ({ getDesiredRolesForProfile: vi.fn(), saveDe
 vi.mock("@/lib/positions/save", () => positions);
 const search = vi.hoisted(() => ({ runSavedSearch: vi.fn() }));
 vi.mock("@/lib/ingest/run", () => search);
+const stats = vi.hoisted(() => ({ loadSearchStats: vi.fn() }));
+vi.mock("@/lib/stats/searchStatsQuery", () => stats);
 // Lo programado con after() se corre en el momento, para poder verlo en el test
 vi.mock("next/server", () => ({ after: (task: () => Promise<void>) => task() }));
 const coverLetters = vi.hoisted(() => ({ generateCoverLetterForApplication: vi.fn() }));
 vi.mock("@/lib/applications/coverLetter", () => coverLetters);
 
+import { WRITING_GUIDE } from "@/lib/applications/voice";
 import { handleMcpMessage } from "./mcp";
 import { SERVER_INSTRUCTIONS, agentTools } from "./tools";
 
@@ -42,6 +48,8 @@ async function callTool(name: string, args: unknown) {
 beforeEach(() => {
     vi.clearAllMocks();
     db.$transaction.mockImplementation(async (fn: (tx: typeof db) => Promise<unknown>) => fn(db));
+    db.applicationAnswer.groupBy.mockResolvedValue([]);
+    db.applicationAnswer.findMany.mockResolvedValue([]);
 });
 
 describe("agentTools", () => {
@@ -180,7 +188,7 @@ describe("agentTools", () => {
 
         const result = await callTool("search_now", {});
 
-        expect(search.runSavedSearch).toHaveBeenCalledWith("profile-1");
+        expect(search.runSavedSearch).toHaveBeenCalledWith("profile-1", "AGENT");
         expect(JSON.parse(result.text)).toEqual({ summary: "300 ofertas revisadas, 20 nuevas en la cola.", created: 20 });
     });
 
@@ -190,6 +198,23 @@ describe("agentTools", () => {
         const result = await callTool("search_now", {});
 
         expect(result).toEqual({ isError: true, text: "Ya se buscó hace poco. Podés volver a buscar en 30 min." });
+    });
+
+    it("get_search_stats consulta el perfil del token con el período pedido", async () => {
+        stats.loadSearchStats.mockResolvedValue({ days: 7, funnel: {}, sources: [] });
+
+        const result = await callTool("get_search_stats", { days: 7 });
+
+        expect(result.isError).toBe(false);
+        expect(stats.loadSearchStats).toHaveBeenCalledWith("profile-1", 7);
+    });
+
+    it("get_search_stats usa 30 días por defecto y rechaza otros períodos", async () => {
+        stats.loadSearchStats.mockResolvedValue({});
+        await callTool("get_search_stats", {});
+        expect(stats.loadSearchStats).toHaveBeenCalledWith("profile-1", 30);
+
+        expect((await callTool("get_search_stats", { days: 15 })).isError).toBe(true);
     });
 
     it("aprueba y descarta ofertas del perfil del token y prepara la carta de las aprobadas", async () => {
@@ -241,5 +266,71 @@ describe("agentTools", () => {
 
         expect(result.isError).toBe(true);
         expect(db.jobApplication.update).not.toHaveBeenCalled();
+    });
+
+    it("get_candidate devuelve el archivo de cada CV con su idioma, para subir el que corresponde", async () => {
+        db.user.findUnique.mockResolvedValue({ name: "Sergio", email: "s@example.com" });
+        db.cV.findFirst.mockResolvedValue({ id: "cv-en", name: "CV EN", text: "..." });
+        db.cV.findMany.mockResolvedValue([
+            { name: "CV EN", isPrimary: true, language: "en", fileUrl: "https://example.com/en.pdf", filePath: "G:/cv/en.pdf" },
+            { name: "CV ES", isPrimary: false, language: "es", fileUrl: null, filePath: "G:/cv/es.pdf" },
+        ]);
+        db.mediaAsset.findMany.mockResolvedValue([]);
+        db.coverLetter.findMany.mockResolvedValue([]);
+
+        const result = JSON.parse((await callTool("get_candidate", {})).text);
+
+        expect(db.cV.findMany).toHaveBeenCalledWith(expect.objectContaining({ where: { profileId: "profile-1" } }));
+        expect(result.cvFiles).toEqual([
+            { name: "CV EN", isPrimary: true, language: "en", fileUrl: "https://example.com/en.pdf", filePath: "G:/cv/en.pdf" },
+            { name: "CV ES", isPrimary: false, language: "es", fileUrl: null, filePath: "G:/cv/es.pdf" },
+        ]);
+    });
+
+    it("list_answer_templates dice el modo, cuántas veces se usó y la última adaptación", async () => {
+        db.answerTemplate.findMany.mockResolvedValue([{ id: "t1", question: "¿Por qué acá?", answer: "Me interesa...", tags: ["motivation"], language: null, mode: "ADAPT" }]);
+        db.applicationAnswer.groupBy.mockResolvedValue([{ templateId: "t1", _count: { _all: 3 } }]);
+        db.applicationAnswer.findMany.mockResolvedValue([{ templateId: "t1", answer: "Vi que trabajan con Next..." }]);
+
+        const result = JSON.parse((await callTool("list_answer_templates", {})).text);
+
+        expect(result.templates[0]).toMatchObject({ mode: "ADAPT", usedCount: 3, lastAdapted: "Vi que trabajan con Next..." });
+    });
+
+    it("save_answer_template guarda el modo y no lo toca al actualizar si no viene", async () => {
+        db.answerTemplate.findFirst.mockResolvedValue(null);
+        db.answerTemplate.count.mockResolvedValue(0);
+        db.answerTemplate.create.mockResolvedValue({ id: "t2" });
+        await callTool("save_answer_template", { question: "Un proyecto", answer: "KeyWords...", mode: "ADAPT" });
+        expect(db.answerTemplate.create).toHaveBeenCalledWith(expect.objectContaining({ data: expect.objectContaining({ mode: "ADAPT" }) }));
+
+        db.answerTemplate.findFirst.mockResolvedValue({ id: "t2" });
+        db.answerTemplate.update.mockResolvedValue({ id: "t2" });
+        await callTool("save_answer_template", { question: "Un proyecto", answer: "KeyWords v2..." });
+        expect(db.answerTemplate.update.mock.calls[0][0].data).not.toHaveProperty("mode");
+    });
+
+    it("record_result guarda de dónde salió cada respuesta", async () => {
+        db.jobApplication.findFirst.mockResolvedValue({ id: "app-1", cvId: null });
+        db.answerTemplate.findMany.mockResolvedValue([]);
+
+        await callTool("record_result", {
+            id: "app-1", status: "APPLIED",
+            answers: [{ question: "Sueldo", answer: "2500 USD", origin: "TEMPLATE" }, { question: "GitHub", answer: "github.com/x" }],
+        });
+
+        expect(db.applicationAnswer.createMany.mock.calls[0][0].data.map((a: { origin: string | null }) => a.origin)).toEqual(["TEMPLATE", null]);
+    });
+
+    it("get_candidate entrega la guía de redacción", async () => {
+        db.user.findUnique.mockResolvedValue({ name: "Sergio", email: "s@example.com" });
+        db.cV.findFirst.mockResolvedValue(null);
+        db.cV.findMany.mockResolvedValue([]);
+        db.mediaAsset.findMany.mockResolvedValue([]);
+        db.coverLetter.findMany.mockResolvedValue([]);
+
+        const result = JSON.parse((await callTool("get_candidate", {})).text);
+
+        expect(result.writingGuide).toBe(WRITING_GUIDE);
     });
 });
