@@ -88,9 +88,9 @@ export async function getJobSearchSettings(): Promise<JobSearchSettingsData> {
   const profileId = await requireProfileId()
   const [settings, offers] = await Promise.all([
     prisma.jobSearchSettings.findUnique({ where: { profileId } }),
-    // Las más recientes alcanzan para ver de qué empresas vienen las ofertas
+    // Las más recientes alcanzan para ver de qué empresas vienen las ofertas; las descartadas no cuentan
     prisma.jobApplication.findMany({
-      where: { profileId },
+      where: { profileId, status: { not: "SKIPPED" } },
       orderBy: { date: "desc" },
       take: SUGGESTION_SAMPLE,
       select: { link: true, applyUrl: true }
