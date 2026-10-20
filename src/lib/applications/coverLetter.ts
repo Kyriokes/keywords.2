@@ -4,6 +4,7 @@ import prisma from "@/lib/prisma";
 import { postToMcp } from "@/lib/ia/client";
 import { LIMITS, type ActionResult } from "@/lib/validation";
 import { buildCoverLetterPrompt, cleanCoverLetter } from "./prepare";
+import { findAiTells } from "./voice";
 
 const DAY_MS = 24 * 60 * 60 * 1000;
 
@@ -58,18 +59,18 @@ export async function generateCoverLetterForApplication(
         return { ok: false, code: "NO_CV", message: "Cargá tu CV en Mi perfil para generar la carta." };
     }
 
-    const prompt = buildCoverLetterPrompt({
+    const input = {
         jobTitle: application.jobTitle,
         company: application.company,
         jobDescription: application.jobDescription,
         cvText,
         candidateName: application.profile.user.name,
         template: template?.text,
-    });
+    };
 
     let text: string | null = null;
     try {
-        const { text: raw } = await postToMcp(prompt);
+        const { text: raw } = await postToMcp(buildCoverLetterPrompt(input));
         text = cleanCoverLetter(raw, LIMITS.coverLetter);
     } catch (error) {
         console.error("Cover letter generation failed:", error);
@@ -77,6 +78,18 @@ export async function generateCoverLetterForApplication(
     }
     if (!text) {
         return { ok: false, code: "AI_INVALID", message: "La IA devolvió una carta inutilizable. Probá regenerarla." };
+    }
+
+    // Si suena a IA se pide una vez más sin esas frases; si no mejora o falla, queda la primera: nunca sin carta
+    const tells = findAiTells(text);
+    if (tells.length) {
+        try {
+            const { text: raw } = await postToMcp(buildCoverLetterPrompt({ ...input, avoid: tells }));
+            const retry = cleanCoverLetter(raw, LIMITS.coverLetter);
+            if (retry !== null && findAiTells(retry).length < tells.length) text = retry;
+        } catch (error) {
+            console.error("Cover letter retry failed:", error);
+        }
     }
 
     await prisma.coverLetter.upsert({
