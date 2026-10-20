@@ -2,6 +2,7 @@
  * Preparación de una postulación antes de que el agente la complete: qué tan bien encaja con
  * el CV y el borrador de la carta de presentación. Funciones puras, sin base ni IA.
  */
+import { detectLanguage, LANGUAGE_NAMES, type LetterLanguage } from "./language";
 import { AI_TELLS, WRITING_GUIDE } from "./voice";
 
 /** Porcentaje (0-100) de keywords de la oferta que están en el CV; null si no hay con qué comparar. */
@@ -29,6 +30,24 @@ export interface CoverLetterInput {
     template?: string | null;
     /** Muletillas que tuvo la versión anterior: se pide reescribirla sin ellas. */
     avoid?: string[];
+    /** Idioma de la oferta: se le pide la carta en ese idioma de forma explícita. */
+    language?: LetterLanguage;
+    /** Tecnologías que pide la oferta y no están en el CV: no se nombran. */
+    missingSkills?: string[];
+    /** Tecnologías que nombró la versión anterior sin estar en el CV. */
+    unsupported?: string[];
+    /** La versión anterior salió en otro idioma. */
+    wrongLanguage?: boolean;
+}
+
+const CLOSING_LINE: Record<LetterLanguage, string> = {
+    es: "Escribí toda la carta en castellano.",
+    en: "Write the whole letter in English.",
+};
+
+/** Carta modelo en el idioma de la oferta; sin ninguna en ese idioma, la primera (la más reciente). */
+export function pickTemplate(templates: { text: string }[], language: LetterLanguage): string | null {
+    return (templates.find((template) => detectLanguage(template.text) === language) ?? templates[0])?.text ?? null;
 }
 
 export function buildCoverLetterPrompt(input: CoverLetterInput): string {
@@ -43,6 +62,19 @@ ${input.template.slice(0, PROMPT_LIMITS.template)}
     const avoid = input.avoid?.length
         ? `\n- La versión anterior usó: ${input.avoid.join(", ")}. Reescribila sin esas frases ni equivalentes.`
         : "";
+    // Los modelos chicos tienden a contestar en el idioma de las instrucciones: se nombra el idioma y se repite al final
+    const language = input.language
+        ? `- Escribila en ${LANGUAGE_NAMES[input.language]}, aunque estas instrucciones estén en castellano.`
+        : "- Escribila en el MISMO IDIOMA en que está escrita la oferta.";
+    const missing = input.missingSkills?.length
+        ? `\n- La oferta pide ${input.missingSkills.join(", ")} y el CV no los menciona: no los nombres ni digas que tenés experiencia con ellos.`
+        : "";
+    const unsupported = input.unsupported?.length
+        ? `\n- La versión anterior nombró tecnologías que no están en el CV (${input.unsupported.join(", ")}). Sacalas.`
+        : "";
+    const wrongLanguage = input.wrongLanguage && input.language
+        ? `\n- La versión anterior no estaba en ${LANGUAGE_NAMES[input.language]}.`
+        : "";
     const greeting = input.company
         ? `"Hola equipo de ${input.company}," (en inglés: "Hi ${input.company} team,")`
         : `"Hola," (en inglés: "Hi,")`;
@@ -50,11 +82,11 @@ ${input.template.slice(0, PROMPT_LIMITS.template)}
     return `Escribí una carta de presentación breve para esta postulación, como la escribiría el candidato en un mail a una persona.
 
 REGLAS:
-- Escribila en el MISMO IDIOMA en que está escrita la oferta.
+${language}${wrongLanguage}
 - Entre 80 y 130 palabras, en 2 o 3 párrafos cortos.
 - Sin título, sin asunto, sin fecha, sin direcciones ni encabezados.
 - Empezá con un saludo simple: ${greeting}.
-- Usá SOLO experiencia y habilidades que aparezcan en el CV. NO inventes empresas, títulos, años ni logros.
+- Usá SOLO experiencia y habilidades que aparezcan en el CV. NO inventes empresas, títulos, años ni logros.${missing}${unsupported}
 - Conectá 1 o 2 requisitos concretos de la oferta con experiencia real del CV.
 - Si falta un dato (nombre de la empresa, del reclutador), no uses marcadores como [Empresa]: escribí la frase sin ese dato.
 - Cerrá con una frase corta (por ejemplo, que te gustaría charlar) y el nombre del candidato${input.candidateName ? ` (${input.candidateName})` : " si aparece en el CV"}.
@@ -72,7 +104,7 @@ ${input.jobDescription.slice(0, PROMPT_LIMITS.description)}
 
 ###CV###
 ${input.cvText.slice(0, PROMPT_LIMITS.cv)}
-###CV###`;
+###CV###${input.language ? `\n\n${CLOSING_LINE[input.language]}` : ""}`;
 }
 
 /**

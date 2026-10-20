@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { buildCoverLetterPrompt, cleanCoverLetter, computeMatchScore } from "./prepare";
+import { buildCoverLetterPrompt, cleanCoverLetter, computeMatchScore, pickTemplate } from "./prepare";
 import { WRITING_GUIDE } from "./voice";
 
 const LETTER = "Estimado equipo:\n\n" + "Me interesa mucho el puesto y creo que mi experiencia encaja. ".repeat(6) + "\n\nSaludos,\nAna";
@@ -59,6 +59,41 @@ describe("buildCoverLetterPrompt", () => {
             "La versión anterior usó: leverage, fast-paced. Reescribila sin esas frases ni equivalentes."
         );
         expect(buildCoverLetterPrompt(base)).not.toContain("La versión anterior");
+    });
+
+    it("nombra el idioma de la carta y lo repite al final, en ese idioma", () => {
+        const english = buildCoverLetterPrompt({ ...base, language: "en" });
+        expect(english).toContain("- Escribila en inglés, aunque estas instrucciones estén en castellano.");
+        expect(english.endsWith("Write the whole letter in English.")).toBe(true);
+        expect(buildCoverLetterPrompt({ ...base, language: "es" }).endsWith("Escribí toda la carta en castellano.")).toBe(true);
+    });
+
+    it("pide no nombrar las tecnologías de la oferta que no están en el CV", () => {
+        expect(buildCoverLetterPrompt({ ...base, missingSkills: ["Go", "GORM"] })).toContain(
+            "- La oferta pide Go, GORM y el CV no los menciona: no los nombres ni digas que tenés experiencia con ellos."
+        );
+        expect(buildCoverLetterPrompt(base)).not.toContain("La oferta pide");
+    });
+
+    it("en el reintento señala las tecnologías inventadas y el idioma equivocado", () => {
+        const prompt = buildCoverLetterPrompt({ ...base, language: "en", unsupported: ["Go"], wrongLanguage: true });
+        expect(prompt).toContain("- La versión anterior nombró tecnologías que no están en el CV (Go). Sacalas.");
+        expect(prompt).toContain("- La versión anterior no estaba en inglés.");
+    });
+});
+
+describe("pickTemplate", () => {
+    const spanish = { text: "Hola equipo, soy desarrollador y trabajo con React en el Instituto de Ayuda Financiera." };
+    const english = { text: "Hi team, I'm a developer and I work with React at the Instituto de Ayuda Financiera." };
+
+    it("elige la carta modelo en el idioma de la oferta", () => {
+        expect(pickTemplate([spanish, english], "en")).toBe(english.text);
+        expect(pickTemplate([english, spanish], "es")).toBe(spanish.text);
+    });
+
+    it("sin una en ese idioma usa la primera, y sin modelos devuelve null", () => {
+        expect(pickTemplate([spanish], "en")).toBe(spanish.text);
+        expect(pickTemplate([], "en")).toBeNull();
     });
 });
 
