@@ -184,7 +184,8 @@ export function JobSearchPanel({ initial }: { initial: JobSearchSettingsData }) 
                     />
                     <p className="text-xs text-muted-foreground">
                         El nombre sale del link de empleos de la empresa: boards.greenhouse.io/<strong>stripe</strong>, jobs.lever.co/
-                        <strong>netflix</strong>, jobs.ashbyhq.com/<strong>notion</strong>.
+                        <strong>netflix</strong>, jobs.ashbyhq.com/<strong>notion</strong>, apply.workable.com/<strong>workstate</strong>,
+                        jobs.smartrecruiters.com/<strong>Endava</strong> (de SmartRecruiters se toman las publicadas en Argentina).
                     </p>
                 </div>
 

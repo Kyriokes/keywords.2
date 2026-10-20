@@ -62,7 +62,7 @@ function parseSettings(data: EditableSettings): ActionResult<EditableSettings> {
     return {
       ok: false,
       code: "INVALID_INPUT",
-      message: `No reconozco: ${invalid.join(", ")}. Usá el formato greenhouse:empresa, lever:empresa o ashby:empresa.`
+      message: `No reconozco: ${invalid.join(", ")}. Usá el formato greenhouse:empresa, lever:empresa, ashby:empresa, workable:empresa o smartrecruiters:empresa.`
     }
   }
   if (input.atsBoards.length > LIMITS.atsBoards) {

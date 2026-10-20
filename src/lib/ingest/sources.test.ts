@@ -10,6 +10,8 @@ import {
     parseLever,
     parseRemoteOk,
     parseRemotive,
+    parseSmartRecruitersPosting,
+    parseWorkable,
 } from "./sources";
 
 describe("htmlToText", () => {
@@ -174,7 +176,75 @@ describe("parsers", () => {
     });
 });
 
+describe("Workable y SmartRecruiters", () => {
+    it("Workable: ofertas de la cuenta con sus países y si son remotas", () => {
+        const jobs = parseWorkable(
+            {
+                name: "Workstate",
+                jobs: [
+                    {
+                        shortcode: "B289E00FD2",
+                        title: "Senior Full Stack Developer - LATAM Remote",
+                        url: "https://apply.workable.com/j/B289E00FD2",
+                        application_url: "https://apply.workable.com/j/B289E00FD2/apply",
+                        telecommuting: true,
+                        locations: [{ country: "Colombia" }, { country: "Argentina" }],
+                        description: "<p>React y Node</p>",
+                    },
+                    { shortcode: "X1", title: "Contador", url: "https://apply.workable.com/j/X1", telecommuting: false, country: "Mexico", city: "CDMX", description: "<p>x</p>" },
+                    { shortcode: "X2", title: "Sin descripción", url: "https://apply.workable.com/j/X2" },
+                ],
+            },
+            "workstate"
+        );
+        expect(jobs).toEqual([
+            {
+                source: "workable",
+                externalId: "workstate:B289E00FD2",
+                title: "Senior Full Stack Developer - LATAM Remote",
+                company: "Workstate",
+                url: "https://apply.workable.com/j/B289E00FD2",
+                applyUrl: "https://apply.workable.com/j/B289E00FD2/apply",
+                description: "React y Node",
+                location: "Remoto desde Colombia, Argentina",
+            },
+            expect.objectContaining({ externalId: "workstate:X1", location: "CDMX, Mexico" }),
+        ]);
+    });
+
+    it("SmartRecruiters: arma la oferta con el detalle de la publicación", () => {
+        const detail = (location: Record<string, unknown>) => ({
+            id: "744000154726210",
+            name: "Full Stack Developer",
+            company: { name: "Endava", identifier: "Endava" },
+            location: { city: "Buenos Aires", country: "ar", fullLocation: "Buenos Aires, Argentina", ...location },
+            postingUrl: "https://jobs.smartrecruiters.com/Endava/744000154726210-full-stack-developer",
+            applyUrl: "https://jobs.smartrecruiters.com/Endava/744000154726210-full-stack-developer?oga=true",
+            jobAd: { sections: { jobDescription: { text: "<p>React</p>" }, qualifications: { text: "<p>Node</p>" } } },
+        });
+
+        expect(parseSmartRecruitersPosting(detail({ remote: true }), "endava")).toEqual({
+            source: "smartrecruiters",
+            externalId: "endava:744000154726210",
+            title: "Full Stack Developer",
+            company: "Endava",
+            url: "https://jobs.smartrecruiters.com/Endava/744000154726210-full-stack-developer",
+            applyUrl: "https://jobs.smartrecruiters.com/Endava/744000154726210-full-stack-developer?oga=true",
+            description: "React\n\nNode",
+            location: "Remoto desde Buenos Aires, Argentina",
+        });
+        expect(parseSmartRecruitersPosting(detail({ hybrid: true }), "endava")?.location).toBe("Híbrido · Buenos Aires, Argentina");
+        expect(parseSmartRecruitersPosting(detail({}), "endava")?.location).toBe("Presencial · Buenos Aires, Argentina");
+        expect(parseSmartRecruitersPosting({ id: "1", name: "Sin texto" }, "endava")).toBeNull();
+    });
+});
+
 describe("parseAtsBoard", () => {
+    it("acepta Workable y SmartRecruiters", () => {
+        expect(parseAtsBoard("workable:workstate")).toEqual({ source: "workable", board: "workstate" });
+        expect(parseAtsBoard("SmartRecruiters:Endava")).toEqual({ source: "smartrecruiters", board: "endava" });
+    });
+
     it("acepta source:empresa y rechaza el resto", () => {
         expect(parseAtsBoard(" Greenhouse:Stripe ")).toEqual({ source: "greenhouse", board: "stripe" });
         expect(parseAtsBoard("lever:netflix")).toEqual({ source: "lever", board: "netflix" });

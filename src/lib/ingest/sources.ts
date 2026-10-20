@@ -22,7 +22,7 @@ export const AGGREGATOR_SOURCES = ["remotive", "remoteok", "himalayas", "getonbr
 /** Portales que se consultan por cada puesto deseado, no una sola vez para todos. */
 export const SEARCH_BY_TERM_SOURCES = new Set<string>(["himalayas", "getonbrd"]);
 /** ATS de empresas: se consultan por cada empresa que siga el usuario ("greenhouse:stripe"). */
-export const ATS_SOURCES = ["greenhouse", "lever", "ashby"] as const;
+export const ATS_SOURCES = ["greenhouse", "lever", "ashby", "workable", "smartrecruiters"] as const;
 
 export type AggregatorSource = typeof AGGREGATOR_SOURCES[number];
 export type AtsSource = typeof ATS_SOURCES[number];
@@ -36,6 +36,8 @@ export const SOURCE_LABELS: Record<AggregatorSource | AtsSource, string> = {
     greenhouse: "Greenhouse",
     lever: "Lever",
     ashby: "Ashby",
+    workable: "Workable",
+    smartrecruiters: "SmartRecruiters",
 };
 
 const ENTITIES: Record<string, string> = { amp: "&", lt: "<", gt: ">", quot: '"', apos: "'", nbsp: " " };
@@ -291,13 +293,75 @@ export function parseAshby(data: unknown, board: string): IngestedJob[] {
     );
 }
 
+/** Workable: "Remoto desde Colombia, Argentina" si es remota; si no, la ciudad y el país. */
+function workableLocation(item: Json): string | null {
+    const countries = Array.isArray(item.locations)
+        ? Array.from(new Set(item.locations.filter(isObject).map((location) => str(location.country)).filter((country) => !!country)))
+        : [];
+    const where = countries.length ? countries.join(", ") : [str(item.city), str(item.country)].filter(Boolean).join(", ");
+    if (item.telecommuting) return where ? `Remoto desde ${where}` : "Remoto";
+    return where || null;
+}
+
+export function parseWorkable(data: unknown, board: string): IngestedJob[] {
+    const jobs = isObject(data) && Array.isArray(data.jobs) ? data.jobs : [];
+    const company = isObject(data) ? str(data.name) : null;
+    return compact(
+        jobs.filter(isObject).map((item) =>
+            job({
+                source: "workable",
+                externalId: item.shortcode === undefined ? undefined : `${board}:${item.shortcode}`,
+                title: item.title,
+                company: company ?? board,
+                url: item.url,
+                applyUrl: str(item.application_url),
+                description: str(item.description) && htmlToText(item.description as string),
+                location: workableLocation(item),
+            })
+        )
+    );
+}
+
+/** SmartRecruiters: la modalidad viene en banderas (remote, hybrid) junto a la ubicación completa. */
+function smartRecruitersLocation(location: Json): string | null {
+    const where = str(location.fullLocation) ?? ([str(location.city), str(location.country)?.toUpperCase()].filter(Boolean).join(", ") || null);
+    if (location.remote) return where ? `Remoto desde ${where}` : "Remoto";
+    if (location.hybrid) return where ? `Híbrido · ${where}` : "Híbrido";
+    return where ? `Presencial · ${where}` : null;
+}
+
+/** Una publicación de SmartRecruiters con su detalle (la lista no trae la descripción). */
+export function parseSmartRecruitersPosting(data: unknown, board: string): IngestedJob | null {
+    if (!isObject(data)) return null;
+    const sections = isObject(data.jobAd) && isObject(data.jobAd.sections) ? data.jobAd.sections : {};
+    // La descripción de la empresa queda afuera: no son requisitos y ensucia el match
+    const parts = ["jobDescription", "qualifications", "additionalInformation"]
+        .map((key) => (isObject(sections[key]) ? str(sections[key].text) : null))
+        .filter(Boolean);
+    return job({
+        source: "smartrecruiters",
+        externalId: data.id === undefined ? undefined : `${board}:${data.id}`,
+        title: data.name,
+        company: isObject(data.company) ? str(data.company.name) ?? board : board,
+        url: data.postingUrl,
+        applyUrl: str(data.applyUrl),
+        description: parts.length ? htmlToText(parts.join("\n")) : null,
+        location: isObject(data.location) ? smartRecruitersLocation(data.location) : null,
+    });
+}
+
 /** "greenhouse:stripe" → { source: "greenhouse", board: "stripe" }; null si no es válido. */
 export function parseAtsBoard(value: string): { source: AtsSource; board: string } | null {
-    const match = value.trim().toLowerCase().match(/^(greenhouse|lever|ashby):([a-z0-9][a-z0-9._-]{0,99})$/);
+    const match = value
+        .trim()
+        .toLowerCase()
+        .match(/^(greenhouse|lever|ashby|workable|smartrecruiters):([a-z0-9][a-z0-9._-]{0,99})$/);
     return match ? { source: match[1] as AtsSource, board: match[2] } : null;
 }
 
 const USER_AGENT = "KeyWords job tracker (+https://kwtools.vercel.app)";
+/** Detalles que se piden por empresa en SmartRecruiters (un pedido por publicación). */
+const SMARTRECRUITERS_MAX_DETAILS = 40;
 const TIMEOUT_MS = 15_000;
 
 async function getJson(url: string): Promise<unknown> {
@@ -361,5 +425,22 @@ export async function fetchAtsBoard(source: AtsSource, board: string): Promise<I
             return parseLever(await getJson(`https://api.lever.co/v0/postings/${name}?mode=json`), board);
         case "ashby":
             return parseAshby(await getJson(`https://api.ashbyhq.com/posting-api/job-board/${name}`), board);
+        case "workable":
+            return parseWorkable(await getJson(`https://apply.workable.com/api/v1/widget/accounts/${name}?details=true`), board);
+        case "smartrecruiters": {
+            // La lista no trae la descripción: se piden los detalles de las publicadas en Argentina
+            const list = await getJson(`https://api.smartrecruiters.com/v1/companies/${name}/postings?country=ar&limit=100`);
+            const ids = (isObject(list) && Array.isArray(list.content) ? list.content : [])
+                .filter(isObject)
+                .map((posting) => str(posting.id))
+                .filter((id): id is string => !!id)
+                .slice(0, SMARTRECRUITERS_MAX_DETAILS);
+            const details = await Promise.all(
+                ids.map((id) =>
+                    getJson(`https://api.smartrecruiters.com/v1/companies/${name}/postings/${encodeURIComponent(id)}`).catch(() => null)
+                )
+            );
+            return details.flatMap((detail) => parseSmartRecruitersPosting(detail, board) ?? []);
+        }
     }
 }
