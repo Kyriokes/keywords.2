@@ -1,14 +1,16 @@
 'use client'
 
 import { useState } from 'react'
-import { Check, ExternalLink, Loader2, RotateCcw, Send, Sparkles, X } from 'lucide-react'
+import { Check, CheckCheck, ExternalLink, Loader2, RotateCcw, Send, Sparkles, X } from 'lucide-react'
 import { toast } from 'sonner'
 import { Badge } from '@/components/ui/badge'
+import { Input } from '@/components/ui/input'
 import { Button } from '@/components/ui/button'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { Textarea } from '@/components/ui/textarea'
 import { updateApplicationStatus } from '@/actions/application-actions'
 import {
+    approveQueueByScore,
     generateApplicationCoverLetter,
     saveApplicationCoverLetter,
     type QueueData,
@@ -194,6 +196,51 @@ function QueueCard({ item, onStatus }: { item: QueueItem; onStatus?: (item: Queu
     )
 }
 
+const DEFAULT_BULK_SCORE = 50
+
+/** Aprueba de una vez las ofertas por aprobar con match igual o mayor al elegido. */
+function BulkApprove({ ready, onApproved }: { ready: QueueItem[]; onApproved: (minScore: number) => void }) {
+    const [minScore, setMinScore] = useState(DEFAULT_BULK_SCORE)
+    const [busy, setBusy] = useState(false)
+    const count = ready.filter((item) => item.score !== null && item.score >= minScore).length
+
+    const approve = async () => {
+        if (!window.confirm(`¿Aprobar ${count} ofertas con match de ${minScore}% o más? Claude va a postular a todas las aprobadas.`)) return
+        setBusy(true)
+        try {
+            const result = await approveQueueByScore(minScore)
+            if (!result.ok) return void toast.error(result.message)
+            onApproved(minScore)
+            toast.success(`Aprobaste ${result.data.approved}. Las cartas se preparan en segundo plano.`)
+        } catch {
+            toast.error('No se pudieron aprobar')
+        } finally {
+            setBusy(false)
+        }
+    }
+
+    if (ready.length === 0) return null
+    return (
+        <div className="mb-4 flex flex-wrap items-center gap-2 rounded-lg border bg-card p-3 text-sm">
+            <label htmlFor="bulkScore">Aprobar todas las de match ≥</label>
+            <Input
+                id="bulkScore"
+                type="number"
+                min={0}
+                max={100}
+                value={minScore}
+                onChange={(event) => setMinScore(Number(event.target.value))}
+                className="w-20"
+            />
+            <span>%</span>
+            <Button size="sm" onClick={approve} disabled={busy || count === 0}>
+                {busy ? <Loader2 className="size-4 animate-spin" /> : <CheckCheck className="size-4" />}
+                Aprobar {count}
+            </Button>
+        </div>
+    )
+}
+
 function QueueList({ items, empty, onStatus }: { items: QueueItem[]; empty: string; onStatus?: (item: QueueItem, status: ApplicationStatusValue) => void }) {
     if (items.length === 0) return <p className="py-6 text-sm text-muted-foreground">{empty}</p>
     return (
@@ -222,6 +269,14 @@ export function QueueBoard({ initial }: { initial: QueueData }) {
         }
     }
 
+    // Mismo criterio que el servidor: las por aprobar con match igual o mayor pasan a aprobadas
+    const markApproved = (minScore: number) =>
+        setPending((current) =>
+            current.map((entry) =>
+                entry.status === 'READY' && entry.score !== null && entry.score >= minScore ? { ...entry, status: 'APPROVED' } : entry
+            )
+        )
+
     const byStatus = (status: string) => pending.filter((item) => item.status === status)
     const ready = byStatus('READY')
     const approved = byStatus('APPROVED')
@@ -236,6 +291,7 @@ export function QueueBoard({ initial }: { initial: QueueData }) {
                 <TabsTrigger value="submitted">Enviadas por Claude ({initial.submitted.length})</TabsTrigger>
             </TabsList>
             <TabsContent value="ready">
+                <BulkApprove ready={ready} onApproved={markApproved} />
                 <QueueList items={ready} onStatus={changeStatus} empty="No hay ofertas esperando tu aprobación." />
             </TabsContent>
             <TabsContent value="approved">

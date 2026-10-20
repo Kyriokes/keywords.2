@@ -3,7 +3,7 @@ import "server-only";
 import { after } from "next/server";
 import { z } from "zod";
 import prisma from "@/lib/prisma";
-import { generateCoverLetterForApplication } from "@/lib/applications/coverLetter";
+import { prepareCoverLetters } from "@/lib/applications/coverLetterBatch";
 import { createApplicationForProfile } from "@/lib/applications/create";
 import { runSavedSearch } from "@/lib/ingest/run";
 import { getDesiredRolesForProfile, saveDesiredRoles } from "@/lib/positions/save";
@@ -375,14 +375,7 @@ const reviewOffers = defineTool({
 
         // Igual que al aprobar desde la app: la carta se prepara sin hacer esperar la respuesta
         const newlyApproved = toApprove.filter((id) => statusById.get(id) !== "APPROVED");
-        if (newlyApproved.length) {
-            after(async () => {
-                for (const id of newlyApproved) {
-                    const result = await generateCoverLetterForApplication(ctx.profileId, id);
-                    if (!result.ok) console.warn(`Cover letter not prepared for ${id}: ${result.code}`);
-                }
-            });
-        }
+        if (newlyApproved.length) after(() => prepareCoverLetters(ctx.profileId, newlyApproved).then(() => undefined));
 
         return {
             approved: toApprove.length,

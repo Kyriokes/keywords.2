@@ -3,7 +3,10 @@
 import { auth } from "@/auth"
 import prisma from "@/lib/prisma"
 import { revalidatePath } from "next/cache"
+import { after } from "next/server"
+import { approveReadyByScore } from "@/lib/applications/bulkApprove"
 import { generateCoverLetterForApplication } from "@/lib/applications/coverLetter"
+import { prepareCoverLetters } from "@/lib/applications/coverLetterBatch"
 import { LIMITS, type ActionResult } from "@/lib/validation"
 
 /** Estados que se ven en la cola de postulaciones asistidas. */
@@ -43,6 +46,22 @@ async function requireProfileId(): Promise<string> {
   })
   if (!profile) throw new Error("Profile not found")
   return profile.id
+}
+
+/**
+ * Aprueba de una vez las ofertas por aprobar con match igual o mayor a `minScore`. Las cartas se
+ * preparan después de responder, de mayor a menor match, hasta donde alcance el tiempo.
+ */
+export async function approveQueueByScore(minScore: number): Promise<ActionResult<{ approved: number }>> {
+  const profileId = await requireProfileId()
+  if (!Number.isInteger(minScore) || minScore < 0 || minScore > 100) {
+    return { ok: false, code: "INVALID_INPUT", message: "El match tiene que ser un número entre 0 y 100." }
+  }
+
+  const ids = await approveReadyByScore(profileId, minScore)
+  if (ids.length) after(() => prepareCoverLetters(profileId, ids).then(() => undefined))
+  revalidatePath("/user/queue")
+  return { ok: true, data: { approved: ids.length } }
 }
 
 /** Genera (o regenera) con la IA el borrador de la carta de una oferta. */
