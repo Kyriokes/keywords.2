@@ -43,12 +43,16 @@ export interface OfferForEligibility {
     location: string | null;
     description: string;
     seniority: Seniority | null;
+    /** Sueldo mínimo publicado en USD por mes, si se conoce. */
+    salaryUsdMonthly?: number | null;
 }
 
 export interface EligibilityRules {
     workModes: WorkMode[];
     seniorityPolicy: SeniorityPolicy;
     minScore: number;
+    /** Sueldo (USD por mes) que tiene que superar una oferta para aceptar mudarse; null = nunca. */
+    minRelocationSalaryUsd: number | null;
 }
 
 export interface Eligibility {
@@ -170,29 +174,48 @@ const MODE_SUMMARY: Record<WorkMode, string> = {
     ONSITE: "Presencial",
 };
 
+const formatUsd = (amount: number) => `${amount.toLocaleString("es-AR")} USD/mes`;
+
 /** Decide si vale la pena postular a la oferta y con qué match mínimo. */
 export function checkEligibility(offer: OfferForEligibility, rules: EligibilityRules): Eligibility {
     const blockers: string[] = [];
     const body = normalize(offer.description);
     const workMode = detectWorkMode(offer);
+    const salary = offer.salaryUsdMonthly ?? null;
 
-    const outsideLocation = locationBlocker(offer.location);
+    // Mudarse vale solo si el sueldo publicado supera el mínimo que eligió el usuario. Cuando la oferta
+    // pide mudanza, dónde queda y cómo se trabaja son consecuencia de eso: el motivo es uno solo.
+    const relocationRequired = RELOCATION.test(body);
+    const relocationAccepted =
+        relocationRequired && rules.minRelocationSalaryUsd !== null && salary !== null && salary > rules.minRelocationSalaryUsd;
+
+    if (relocationRequired && !relocationAccepted) {
+        blockers.push(
+            rules.minRelocationSalaryUsd === null
+                ? "Pide mudanza"
+                : salary === null
+                  ? "Pide mudanza sin sueldo publicado"
+                  : `Pide mudanza (sueldo ${formatUsd(salary)})`
+        );
+    }
+
+    const outsideLocation = relocationRequired ? null : locationBlocker(offer.location);
     if (outsideLocation) blockers.push(outsideLocation);
 
     if (CITIZENSHIP.test(body)) blockers.push("Pide ciudadanía o clearance");
 
-    const residency = requiredPlaceOutsideRegion(RESIDENCY, offer.description);
+    const residency = relocationRequired ? null : requiredPlaceOutsideRegion(RESIDENCY, offer.description);
     if (residency) blockers.push(`Exige vivir en ${residency}`);
 
+    // Mudarse no da permiso de trabajo: esto se controla siempre
     const authorization = requiredPlaceOutsideRegion([WORK_AUTHORIZATION], offer.description);
     if (authorization) blockers.push(`Pide permiso de trabajo en ${authorization}`);
 
-    if (RELOCATION.test(body)) blockers.push("Pide mudanza");
-
     // Si la ubicación ya es de afuera, la modalidad no agrega nada al motivo
-    if (!outsideLocation && workMode && !rules.workModes.includes(workMode)) {
+    const checkMode = !relocationRequired && !outsideLocation;
+    if (checkMode && workMode && !rules.workModes.includes(workMode)) {
         blockers.push(MODE_BLOCKERS[workMode]);
-    } else if (!outsideLocation && (workMode === "HYBRID" || workMode === "ONSITE")) {
+    } else if (checkMode && (workMode === "HYBRID" || workMode === "ONSITE")) {
         const where = normalize(`${offer.location ?? ""} ${offer.title} ${offer.description.slice(0, 4_000)}`);
         if (!BUENOS_AIRES.test(where)) blockers.push(`${MODE_SUMMARY[workMode]} fuera de Buenos Aires`);
     }
@@ -213,6 +236,8 @@ export function checkEligibility(offer: OfferForEligibility, rules: EligibilityR
         workMode && MODE_SUMMARY[workMode],
         offer.seniority && SENIORITY_LABELS[offer.seniority],
         yearsRequired !== null && `pide ${yearsRequired} ${yearsRequired === 1 ? "año" : "años"}`,
+        relocationAccepted && "pide mudanza",
+        salary !== null && formatUsd(salary),
     ]
         .filter(Boolean)
         .join(" · ");

@@ -82,6 +82,7 @@ export function JobSearchPanel({ initial }: { initial: JobSearchSettingsData }) 
     const [maxPerRun, setMaxPerRun] = useState(initial.maxPerRun)
     const [workModes, setWorkModes] = useState<string[]>(initial.workModes)
     const [seniorityPolicy, setSeniorityPolicy] = useState(initial.seniorityPolicy)
+    const [relocationSalary, setRelocationSalary] = useState(initial.minRelocationSalaryUsd?.toString() ?? '')
     const [lastResult, setLastResult] = useState(initial.lastResult)
     const [lastRunAt, setLastRunAt] = useState(initial.lastRunAt)
     const [preview, setPreview] = useState<Preview | null>(null)
@@ -104,6 +105,8 @@ export function JobSearchPanel({ initial }: { initial: JobSearchSettingsData }) 
         maxPerRun,
         workModes,
         seniorityPolicy,
+        // Vacío = nunca aceptar mudanza
+        minRelocationSalaryUsd: relocationSalary.trim() ? Number(relocationSalary) : null,
     })
 
     const save = async () => {
@@ -264,6 +267,23 @@ export function JobSearchPanel({ initial }: { initial: JobSearchSettingsData }) 
                             onChange={(event) => setMaxPerRun(Number(event.target.value))}
                         />
                     </div>
+                </div>
+
+                <div className="space-y-2">
+                    <Label htmlFor="relocationSalary">Aceptar mudanza si el sueldo publicado supera (USD por mes)</Label>
+                    <Input
+                        id="relocationSalary"
+                        type="number"
+                        min={0}
+                        placeholder="Vacío: nunca"
+                        value={relocationSalary}
+                        onChange={(event) => setRelocationSalary(event.target.value)}
+                        className="sm:max-w-xs"
+                    />
+                    <p className="text-xs text-muted-foreground">
+                        Las ofertas que piden mudarse entran marcadas &quot;pide mudanza&quot; solo si publican un sueldo mayor. Igual se descartan
+                        las que piden ciudadanía o permiso de trabajo de otro país.
+                    </p>
                 </div>
 
                 {lastResult && (

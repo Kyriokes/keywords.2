@@ -39,6 +39,7 @@ export interface SearchSettingsInput {
     maxPerRun: number;
     workModes: string[];
     seniorityPolicy: string;
+    minRelocationSalaryUsd: number | null;
 }
 
 /** Qué pasó con una oferta de tus puestos: entró a la cola, entraría (modo prueba) o se descartó y por qué. */
@@ -79,7 +80,12 @@ function toRules(settings: SearchSettingsInput): EligibilityRules {
     const seniorityPolicy = (SENIORITY_POLICIES as readonly string[]).includes(settings.seniorityPolicy)
         ? (settings.seniorityPolicy as SeniorityPolicy)
         : "FLEXIBLE";
-    return { workModes: workModes.length ? workModes : DEFAULT_WORK_MODES, seniorityPolicy, minScore: settings.minScore };
+    return {
+        workModes: workModes.length ? workModes : DEFAULT_WORK_MODES,
+        seniorityPolicy,
+        minScore: settings.minScore,
+        minRelocationSalaryUsd: settings.minRelocationSalaryUsd,
+    };
 }
 
 function cached(cache: FetchCache, key: string, load: () => Promise<IngestedJob[]>): Promise<IngestedJob[]> {
@@ -194,7 +200,7 @@ export async function runJobSearch(
 
         const description = job.description.slice(0, LIMITS.jobDescription);
         const eligibility = checkEligibility(
-            { source: job.source, title: job.title, location: job.location, description, seniority },
+            { source: job.source, title: job.title, location: job.location, description, seniority, salaryUsdMonthly: job.salaryUsdMonthly },
             rules
         );
         if (eligibility.blockers.length) {

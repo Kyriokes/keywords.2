@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
     htmlToText,
+    monthlyUsd,
     parseAshby,
     parseAtsBoard,
     parseGetOnBoard,
@@ -173,6 +174,43 @@ describe("parsers", () => {
             expect(parseGreenhouse(value, "x")).toEqual([]);
             expect(parseLever(value, "x")).toEqual([]);
         }
+    });
+});
+
+describe("sueldo publicado", () => {
+    it("monthlyUsd pasa el sueldo a USD por mes y descarta otras monedas", () => {
+        expect(monthlyUsd(120000, 150000, "USD", "annual")).toBe(10000);
+        expect(monthlyUsd(null, 3000, "usd", "monthly")).toBe(3000);
+        expect(monthlyUsd(25, undefined, "USD", "hourly")).toBe(4000);
+        expect(monthlyUsd(450900, null, "MXN", "yearly")).toBeUndefined();
+        expect(monthlyUsd(5000, null, null, "monthly")).toBeUndefined();
+        expect(monthlyUsd(0, null, "USD", "monthly")).toBeUndefined();
+        expect(monthlyUsd(5000, null, "USD", "por proyecto")).toBeUndefined();
+    });
+
+    it("cada portal informa el sueldo con sus propios campos", () => {
+        const html = "<p>React</p>";
+        expect(
+            parseHimalayas({ jobs: [{ guid: "h", title: "Dev", applicationLink: "https://himalayas.app/j/h", description: html, minSalary: 2500, maxSalary: 7000, currency: "USD", salaryPeriod: "monthly" }] })[0]
+                .salaryUsdMonthly
+        ).toBe(2500);
+        expect(
+            parseGetOnBoard({ data: [{ id: "g", attributes: { title: "Dev", description: html, min_salary: 2300, max_salary: 3300 }, links: { public_url: "https://www.getonbrd.com/jobs/g" } }] })[0]
+                .salaryUsdMonthly
+        ).toBe(2300);
+        expect(
+            parseRemoteOk([{ legal: "x" }, { id: 1, position: "Dev", url: "https://remoteok.com/1", description: html, salary_min: 120000, salary_max: 160000 }])[0].salaryUsdMonthly
+        ).toBe(10000);
+        expect(
+            parseJobicy({ jobs: [{ id: 2, url: "https://jobicy.com/jobs/2", jobTitle: "Dev", jobDescription: html, salaryMin: 96000, salaryCurrency: "USD", salaryPeriod: "yearly" }] })[0]
+                .salaryUsdMonthly
+        ).toBe(8000);
+        expect(
+            parseLever(
+                [{ id: "l", text: "Dev", hostedUrl: "https://jobs.lever.co/acme/l", descriptionPlain: "React", salaryRange: { min: 4000, max: 5000, currency: "USD", interval: "per-month-salary" } }],
+                "acme"
+            )[0].salaryUsdMonthly
+        ).toBe(4000);
     });
 });
 

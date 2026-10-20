@@ -36,6 +36,7 @@ export async function GET(request: Request) {
             maxPerRun: true,
             workModes: true,
             seniorityPolicy: true,
+            minRelocationSalaryUsd: true,
         },
     });
 

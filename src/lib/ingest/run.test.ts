@@ -42,6 +42,7 @@ const settings: SearchSettingsInput = {
     maxPerRun: 10,
     workModes: ["REMOTE", "REMOTE_US_HOURS", "HYBRID"],
     seniorityPolicy: "FLEXIBLE",
+    minRelocationSalaryUsd: null,
 };
 
 const job = (id: string, fields: Record<string, unknown>) => ({

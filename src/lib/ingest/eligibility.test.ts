@@ -5,6 +5,7 @@ const rules: EligibilityRules = {
     workModes: ["REMOTE", "REMOTE_US_HOURS", "HYBRID"],
     seniorityPolicy: "FLEXIBLE",
     minScore: 40,
+    minRelocationSalaryUsd: null,
 };
 
 function offer(fields: Partial<OfferForEligibility>): OfferForEligibility {
@@ -182,5 +183,44 @@ describe("checkEligibility", () => {
         const noUsHours: EligibilityRules = { ...rules, workModes: ["REMOTE", "HYBRID"] };
         const description = "Remote. Must work Pacific Time hours.";
         expect(checkEligibility(offer({ source: "remotive", description }), noUsHours).blockers).toEqual(["Horario de EE.UU."]);
+    });
+
+    it("muestra el sueldo publicado en el resumen", () => {
+        const result = checkEligibility(offer({ source: "remotive", location: "LATAM", salaryUsdMonthly: 3200 }), rules);
+        expect(result.summary).toBe("Remoto · 3.200 USD/mes");
+    });
+});
+
+describe("excepción de mudanza", () => {
+    const relocation = { ...rules, minRelocationSalaryUsd: 2500 };
+    const madrid = offer({
+        title: "Full Stack Developer",
+        location: "Madrid, Spain",
+        description: "Hybrid role in Madrid. Willingness to relocate is required. Visa sponsorship available.",
+    });
+
+    it("acepta la mudanza si el sueldo publicado supera el mínimo, aunque la ubicación sea de afuera", () => {
+        const result = checkEligibility({ ...madrid, salaryUsdMonthly: 4500 }, relocation);
+        expect(result.blockers).toEqual([]);
+        expect(result.summary).toBe("Híbrido · pide mudanza · 4.500 USD/mes");
+    });
+
+    it("la descarta si el sueldo no supera el mínimo", () => {
+        expect(checkEligibility({ ...madrid, salaryUsdMonthly: 2500 }, relocation).blockers).toEqual(["Pide mudanza (sueldo 2.500 USD/mes)"]);
+    });
+
+    it("la descarta si no publica sueldo", () => {
+        expect(checkEligibility(madrid, relocation).blockers).toEqual(["Pide mudanza sin sueldo publicado"]);
+    });
+
+    it("sin mínimo configurado, la mudanza siempre descarta", () => {
+        expect(checkEligibility({ ...madrid, salaryUsdMonthly: 9000 }, rules).blockers).toContain("Pide mudanza");
+    });
+
+    it("aunque acepte la mudanza, sigue descartando ciudadanía y permisos de trabajo", () => {
+        const description = `${madrid.description} You must be authorized to work in the EU.`;
+        expect(checkEligibility({ ...madrid, description, salaryUsdMonthly: 6000 }, relocation).blockers).toEqual([
+            "Pide permiso de trabajo en EU",
+        ]);
     });
 });

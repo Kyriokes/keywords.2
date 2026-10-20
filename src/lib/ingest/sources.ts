@@ -15,6 +15,8 @@ export interface IngestedJob {
     applyUrl: string | null;
     description: string;
     location: string | null;
+    /** Sueldo mínimo publicado, en USD por mes; sin valor si no se publica o está en otra moneda. */
+    salaryUsdMonthly?: number;
 }
 
 /** Portales que agregan ofertas de muchas empresas: se consultan una vez por búsqueda. */
@@ -89,6 +91,26 @@ function job(fields: Omit<IngestedJob, "externalId" | "title" | "url" | "descrip
 
 const compact = (jobs: (IngestedJob | null)[]) => jobs.filter((item): item is IngestedJob => item !== null);
 
+// Cuánto vale un período en meses de sueldo: 160 horas, 21 días o 52/12 semanas por mes
+const PERIOD_FACTORS: [RegExp, number][] = [
+    [/hour/, 160],
+    [/day|daily/, 21],
+    [/week/, 52 / 12],
+    [/month/, 1],
+    [/year|annual/, 1 / 12],
+];
+
+/**
+ * Sueldo en USD por mes a partir del mínimo del rango (o el máximo si es lo único publicado).
+ * Otras monedas o un período desconocido no se convierten: un tipo de cambio fijo quedaría viejo.
+ */
+export function monthlyUsd(min: unknown, max: unknown, currency: unknown, period: unknown): number | undefined {
+    const amount = [min, max].map(Number).find((value) => Number.isFinite(value) && value > 0);
+    if (amount === undefined || str(currency)?.toUpperCase() !== "USD") return undefined;
+    const factor = PERIOD_FACTORS.find(([pattern]) => pattern.test(str(period)?.toLowerCase() ?? ""))?.[1];
+    return factor === undefined ? undefined : Math.round(amount * factor);
+}
+
 export function parseRemotive(data: unknown): IngestedJob[] {
     const jobs = isObject(data) && Array.isArray(data.jobs) ? data.jobs : [];
     return compact(
@@ -121,6 +143,8 @@ export function parseRemoteOk(data: unknown): IngestedJob[] {
                 applyUrl: str(item.apply_url),
                 description: str(item.description) && htmlToText(item.description as string),
                 location: str(item.location),
+                // Remote OK publica el sueldo anual en USD
+                salaryUsdMonthly: monthlyUsd(item.salary_min, item.salary_max, "USD", "year"),
             })
         )
     );
@@ -139,6 +163,7 @@ export function parseHimalayas(data: unknown): IngestedJob[] {
                 applyUrl: null,
                 description: str(item.description) && htmlToText(item.description as string),
                 location: Array.isArray(item.locationRestrictions) ? himalayasLocation(item.locationRestrictions) : null,
+                salaryUsdMonthly: monthlyUsd(item.minSalary, item.maxSalary, item.currency, item.salaryPeriod),
             })
         )
     );
@@ -169,6 +194,7 @@ export function parseJobicy(data: unknown): IngestedJob[] {
                 applyUrl: null,
                 description: str(item.jobDescription) && htmlToText(item.jobDescription as string),
                 location: str(item.jobGeo),
+                salaryUsdMonthly: monthlyUsd(item.salaryMin, item.salaryMax, item.salaryCurrency, item.salaryPeriod),
             })
         )
     );
@@ -230,6 +256,8 @@ export function parseGetOnBoard(data: unknown): IngestedJob[] {
                 applyUrl: null,
                 description: parts.length ? htmlToText(parts.join("\n")) : null,
                 location: getOnBoardLocation(attributes),
+                // Get on Board publica el rango en USD por mes
+                salaryUsdMonthly: monthlyUsd(attributes.min_salary, attributes.max_salary, "USD", "month"),
             });
         })
     );
@@ -270,6 +298,9 @@ export function parseLever(data: unknown, board: string): IngestedJob[] {
                 applyUrl: str(item.applyUrl),
                 description: description || null,
                 location: isObject(item.categories) ? str(item.categories.location) : null,
+                salaryUsdMonthly: isObject(item.salaryRange)
+                    ? monthlyUsd(item.salaryRange.min, item.salaryRange.max, item.salaryRange.currency, item.salaryRange.interval)
+                    : undefined,
             });
         })
     );

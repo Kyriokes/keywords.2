@@ -221,6 +221,8 @@ export const jobSearchSettingsSchema = z.object({
         .min(1, "Elegí al menos una modalidad.")
         .transform((modes) => Array.from(new Set(modes))),
     seniorityPolicy: z.enum(SENIORITY_POLICIES),
+    // Vacío = nunca aceptar mudarse
+    minRelocationSalaryUsd: z.number().int().min(0).max(1_000_000).nullable().default(null),
 });
 
 /** Primer mensaje de error de un safeParse fallido, para mostrar al usuario. */

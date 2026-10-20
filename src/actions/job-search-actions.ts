@@ -18,6 +18,8 @@ export interface JobSearchSettingsData {
   maxPerRun: number
   workModes: string[]
   seniorityPolicy: string
+  /** Sueldo (USD por mes) que tiene que superar una oferta para aceptar mudarse; null = nunca. */
+  minRelocationSalaryUsd: number | null
   lastRunAt: string | null
   lastResult: string | null
   /** Empresas que aparecen en los links de las ofertas y todavía no se siguen. */
@@ -29,7 +31,7 @@ const SUGGESTION_SAMPLE = 1_000
 
 type EditableSettings = Pick<
   JobSearchSettingsData,
-  "enabled" | "sources" | "atsBoards" | "minScore" | "maxPerRun" | "workModes" | "seniorityPolicy"
+  "enabled" | "sources" | "atsBoards" | "minScore" | "maxPerRun" | "workModes" | "seniorityPolicy" | "minRelocationSalaryUsd"
 >
 
 // Probar filtros consulta las mismas APIs pero no guarda nada: unas pocas veces cada 10 minutos
@@ -43,7 +45,8 @@ const DEFAULTS = {
   minScore: 40,
   maxPerRun: 40,
   workModes: [...DEFAULT_WORK_MODES] as string[],
-  seniorityPolicy: "FLEXIBLE"
+  seniorityPolicy: "FLEXIBLE",
+  minRelocationSalaryUsd: null as number | null
 }
 
 async function requireProfileId(): Promise<string> {
@@ -109,6 +112,7 @@ export async function getJobSearchSettings(): Promise<JobSearchSettingsData> {
     maxPerRun: settings.maxPerRun,
     workModes: settings.workModes,
     seniorityPolicy: settings.seniorityPolicy,
+    minRelocationSalaryUsd: settings.minRelocationSalaryUsd,
     lastRunAt: settings.lastRunAt?.toISOString() ?? null,
     lastResult: settings.lastResult,
     suggestedBoards
