@@ -131,6 +131,11 @@ model CV {
   // Solo un CV por perfil debe tener isPrimary = true.
   isPrimary Boolean @default(false)
 
+  // Archivo para subir en los formularios de postulación; valores de idioma en src/lib/validation.ts
+  language String? // "en" | "es"
+  fileUrl  String? // Link público al PDF
+  filePath String? // Ruta del PDF en la PC del usuario, para que el agente lo suba
+
   // Relación con Profile en lugar de User
   profileId String
   profile   Profile @relation(fields: [profileId], references: [id], onDelete: Cascade)

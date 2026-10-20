@@ -7,7 +7,10 @@ const db = vi.hoisted(() => ({
     answerTemplate: { findFirst: vi.fn(), findMany: vi.fn(), count: vi.fn(), create: vi.fn(), update: vi.fn() },
     cvVariant: { create: vi.fn() },
     applicationAnswer: { deleteMany: vi.fn(), createMany: vi.fn() },
-    coverLetter: { upsert: vi.fn() },
+    coverLetter: { upsert: vi.fn(), findMany: vi.fn() },
+    user: { findUnique: vi.fn() },
+    cV: { findFirst: vi.fn(), findMany: vi.fn() },
+    mediaAsset: { findMany: vi.fn() },
     $transaction: vi.fn(),
 }));
 
@@ -242,4 +245,24 @@ describe("agentTools", () => {
         expect(result.isError).toBe(true);
         expect(db.jobApplication.update).not.toHaveBeenCalled();
     });
+
+    it("get_candidate devuelve el archivo de cada CV con su idioma, para subir el que corresponde", async () => {
+        db.user.findUnique.mockResolvedValue({ name: "Sergio", email: "s@example.com" });
+        db.cV.findFirst.mockResolvedValue({ id: "cv-en", name: "CV EN", text: "..." });
+        db.cV.findMany.mockResolvedValue([
+            { name: "CV EN", isPrimary: true, language: "en", fileUrl: "https://example.com/en.pdf", filePath: "G:/cv/en.pdf" },
+            { name: "CV ES", isPrimary: false, language: "es", fileUrl: null, filePath: "G:/cv/es.pdf" },
+        ]);
+        db.mediaAsset.findMany.mockResolvedValue([]);
+        db.coverLetter.findMany.mockResolvedValue([]);
+
+        const result = JSON.parse((await callTool("get_candidate", {})).text);
+
+        expect(db.cV.findMany).toHaveBeenCalledWith(expect.objectContaining({ where: { profileId: "profile-1" } }));
+        expect(result.cvFiles).toEqual([
+            { name: "CV EN", isPrimary: true, language: "en", fileUrl: "https://example.com/en.pdf", filePath: "G:/cv/en.pdf" },
+            { name: "CV ES", isPrimary: false, language: "es", fileUrl: null, filePath: "G:/cv/es.pdf" },
+        ]);
+    });
 });
+

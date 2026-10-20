@@ -31,14 +31,20 @@ async function findOwnedApplication(ctx: AgentContext, id: string) {
 const getCandidate = defineTool({
     name: "get_candidate",
     description:
-        "Datos del candidato para completar formularios: nombre, email, el CV activo (texto completo), cartas de presentación modelo y archivos reutilizables como el video de presentación.",
+        "Datos del candidato para completar formularios: nombre, email, el CV activo (texto completo), los archivos de CV por idioma (cvFiles: filePath es la ruta local para subirlo, fileUrl el link público), cartas de presentación modelo y archivos reutilizables como el video de presentación.",
     input: z.object({}),
     run: async (ctx: AgentContext) => {
-        const [user, activeCv, mediaAssets, coverLetterTemplates] = await Promise.all([
+        const [user, activeCv, cvFiles, mediaAssets, coverLetterTemplates] = await Promise.all([
             prisma.user.findUnique({ where: { id: ctx.userId }, select: { name: true, email: true } }),
             prisma.cV.findFirst({
                 where: { profileId: ctx.profileId, isPrimary: true },
                 select: { id: true, name: true, text: true },
+            }),
+            // Un archivo por idioma: el agente sube el del idioma de la oferta
+            prisma.cV.findMany({
+                where: { profileId: ctx.profileId },
+                orderBy: { uploadDate: "desc" },
+                select: { name: true, isPrimary: true, language: true, fileUrl: true, filePath: true },
             }),
             prisma.mediaAsset.findMany({
                 where: { profileId: ctx.profileId },
@@ -52,7 +58,7 @@ const getCandidate = defineTool({
                 orderBy: { updatedAt: "desc" },
             }),
         ]);
-        return { name: user?.name, email: user?.email, activeCv, mediaAssets, coverLetterTemplates };
+        return { name: user?.name, email: user?.email, activeCv, cvFiles, mediaAssets, coverLetterTemplates };
     },
 });
 

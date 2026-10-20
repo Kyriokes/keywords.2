@@ -29,6 +29,7 @@ export const LIMITS = {
     mediaAssets: 10,
     coverLettersPerDay: 60,
     atsBoards: 30,
+    cvFilePath: 500,
     searchMaxPerRun: 60,
 } as const;
 
@@ -223,6 +224,32 @@ export const jobSearchSettingsSchema = z.object({
     seniorityPolicy: z.enum(SENIORITY_POLICIES),
     // Vacío = nunca aceptar mudarse
     minRelocationSalaryUsd: z.number().int().min(0).max(1_000_000).nullable().default(null),
+});
+
+/** Idiomas en los que el usuario puede tener su CV; `/postular` elige el del idioma de la oferta. */
+export const CV_LANGUAGES = ["en", "es"] as const;
+
+/** Archivo de un CV para subir en los formularios: idioma, link público al PDF y ruta en la PC del usuario. */
+export const cvFileSchema = z.object({
+    language: z.enum(CV_LANGUAGES).nullable(),
+    fileUrl: z
+        .string()
+        .transform((value, ctx) => {
+            if (!value.trim()) return null;
+            const link = normalizeLink(value);
+            if (!link) {
+                ctx.addIssue({ code: "custom", message: "El link al PDF debe ser una dirección web válida (http o https)." });
+                return z.NEVER;
+            }
+            return link;
+        }),
+    filePath: z
+        .string()
+        .trim()
+        .max(LIMITS.cvFilePath, "La ruta del archivo es demasiado larga.")
+        // Una ruta de archivo no lleva saltos de línea ni caracteres de control
+        .refine((value) => !/[\u0000-\u001f]/.test(value), "La ruta del archivo no es válida.")
+        .transform((value) => value || null),
 });
 
 /** Primer mensaje de error de un safeParse fallido, para mostrar al usuario. */
