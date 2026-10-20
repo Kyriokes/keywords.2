@@ -224,3 +224,28 @@ describe("excepción de mudanza", () => {
         ]);
     });
 });
+
+describe("ofertas que no son empleos de desarrollo", () => {
+    it("descarta las pasantías y puestos sin sueldo", () => {
+        expect(checkEligibility(offer({ title: "Software Engineer Internship (UNPAID)" }), rules).blockers).toContain("Sin sueldo");
+        expect(checkEligibility(offer({ title: "Desarrollador Web", description: "Pasantía no remunerada de 3 meses." }), rules).blockers).toContain("Sin sueldo");
+    });
+
+    it("descarta las tareas para entrenar o evaluar IA", () => {
+        for (const title of [
+            "Software Engineer, AI Coding Tasks (Contract)",
+            "LATAM Software Engineers: Coding Tasks for AI Evaluation",
+            "Freelance grabación de tareas cotidianas para proyecto de IA",
+            "AI Trainer - Software Engineering",
+            "Data Annotation Specialist (Python)",
+        ]) {
+            expect(checkEligibility(offer({ title }), rules).blockers, title).toEqual(["Tareas para entrenar IA"]);
+        }
+    });
+
+    it("no confunde los puestos de desarrollo con IA", () => {
+        for (const title of ["AI Frontend Developer", "Full Stack AI Engineer", "AI Automation Engineer — Contract", "Backend Engineer, Agent Tools (LATAM)"]) {
+            expect(checkEligibility(offer({ title }), rules).blockers, title).toEqual([]);
+        }
+    });
+});

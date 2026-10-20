@@ -94,7 +94,13 @@ const RESIDENCY = [
 ];
 const WORK_AUTHORIZATION = /\b(?:authori[sz]ed|eligible|permitted|legally able)\s+to\s+work\s+in\s+(?:the\s+)?([^.;:\n()]{2,30})/i;
 
-const LEADERSHIP = /\b(lead|leader|lider|principal|staff|manager|head|director|architect|arquitect[oa]|vp|chief|cto|gerente|jef[ea])\b/;
+// En el título alcanza la palabra; en la descripción, solo frases que no sean "paid and unpaid leave"
+const UNPAID_TITLE = /\b(unpaid|no remunerad[ao]s?|ad honorem|volunteer|voluntari[oa]|voluntariado)\b/;
+const UNPAID_BODY = /\b(unpaid (internship|position|role)|this (is an? )?unpaid|pasantia no remunerada|no remunerad[ao]|ad honorem)\b/;
+/** Trabajos de tareas para entrenar o evaluar modelos de IA (tipo Remotasks), no puestos de desarrollo. */
+const AI_TASKS = /\b(coding tasks?|ai (coding |training |evaluation )?tasks?|ai trainer|ai training|ai tutor|data annotation|annotator|rlhf)\b|\btareas\b.*\b(ia|ai)\b/;
+
+const LEADERSHIP =/\b(lead|leader|lider|principal|staff|manager|head|director|architect|arquitect[oa]|vp|chief|cto|gerente|jef[ea])\b/;
 
 const YEARS_PATTERNS = [
     // "3+ years of experience", "3-5 years experience", "4 years professional experience"
@@ -220,9 +226,13 @@ export function checkEligibility(offer: OfferForEligibility, rules: EligibilityR
         if (!BUENOS_AIRES.test(where)) blockers.push(`${MODE_SUMMARY[workMode]} fuera de Buenos Aires`);
     }
 
+    const title = normalize(offer.title);
+    if (UNPAID_TITLE.test(title) || UNPAID_BODY.test(body)) blockers.push("Sin sueldo");
+    if (AI_TASKS.test(title)) blockers.push("Tareas para entrenar IA");
+
     const yearsRequired = extractYearsRequired(offer.description);
     let minScore = rules.minScore;
-    if (offer.seniority === "LEAD" || LEADERSHIP.test(normalize(offer.title))) {
+    if (offer.seniority === "LEAD" || LEADERSHIP.test(title)) {
         blockers.push("Puesto de liderazgo");
     } else if (offer.seniority === "SENIOR" && rules.seniorityPolicy === "JUNIOR_ONLY") {
         blockers.push("Senior");
