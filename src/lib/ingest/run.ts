@@ -25,7 +25,8 @@ import {
     type AggregatorSource,
     type IngestedJob,
 } from "./sources";
-import { emptySourceStats, sourceOf, type IngestedOfferInput, type SourceStats } from "./stats";
+import { saveSearchRun } from "./record";
+import { emptySourceStats, sourceOf, type IngestedOfferInput, type RunTrigger, type SourceStats } from "./stats";
 
 /**
  * Pedidos compartidos entre los usuarios de una misma búsqueda: cada portal se consulta una
@@ -342,14 +343,27 @@ export async function runJobSearch(
     );
 }
 
-/** Corre la búsqueda y guarda cuándo fue y qué encontró, para mostrarlo en la app. */
-export async function runAndRecord(profileId: string, settings: SearchSettingsInput, cache?: FetchCache) {
+/** Corre la búsqueda y guarda cuándo fue, qué encontró y qué trajo cada portal, para mostrarlo en la app. */
+export async function runAndRecord(
+    profileId: string,
+    settings: SearchSettingsInput,
+    cache?: FetchCache,
+    trigger: RunTrigger = "CRON"
+): Promise<SearchRunResult> {
+    const startedAt = Date.now();
     const result = await runJobSearch(profileId, settings, cache);
+    const durationMs = Date.now() - startedAt;
     if (result.errors.length) console.warn(`Job search for ${profileId}:`, result.errors);
     await prisma.jobSearchSettings.update({
         where: { profileId },
         data: { lastRunAt: new Date(), lastResult: result.summary },
     });
+    // Las estadísticas nunca rompen la búsqueda: las ofertas ya están en la cola
+    try {
+        await saveSearchRun(profileId, trigger, result, durationMs);
+    } catch (error) {
+        console.error("Search stats not saved:", error);
+    }
     return result;
 }
 
@@ -357,7 +371,10 @@ export async function runAndRecord(profileId: string, settings: SearchSettingsIn
 const MANUAL_RUN_INTERVAL_MS = 60 * 60 * 1000;
 
 /** Corre ahora la búsqueda guardada del perfil, como mucho una vez por hora. La usan "Buscar ahora" y el agente. */
-export async function runSavedSearch(profileId: string): Promise<ActionResult<{ summary: string; created: number }>> {
+export async function runSavedSearch(
+    profileId: string,
+    trigger: RunTrigger
+): Promise<ActionResult<{ summary: string; created: number }>> {
     const settings = await prisma.jobSearchSettings.findUnique({ where: { profileId } });
     if (!settings) return { ok: false, code: "NOT_CONFIGURED", message: "Guardá la configuración de la búsqueda antes de buscar." };
 
@@ -367,6 +384,6 @@ export async function runSavedSearch(profileId: string): Promise<ActionResult<{ 
         return { ok: false, code: "TOO_SOON", message: `Ya se buscó hace poco. Podés volver a buscar en ${minutes} min.` };
     }
 
-    const result = await runAndRecord(profileId, settings);
+    const result = await runAndRecord(profileId, settings, undefined, trigger);
     return { ok: true, data: { summary: result.summary, created: result.created } };
 }

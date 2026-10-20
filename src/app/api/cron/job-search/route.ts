@@ -46,7 +46,7 @@ export async function GET(request: Request) {
     for (const settings of pending) {
         if (Date.now() - started > TIME_BUDGET_MS) break;
         try {
-            const result = await runAndRecord(settings.profileId, settings, cache);
+            const result = await runAndRecord(settings.profileId, settings, cache, "CRON");
             created += result.created;
         } catch (error) {
             console.error(`Job search failed for ${settings.profileId}:`, error);

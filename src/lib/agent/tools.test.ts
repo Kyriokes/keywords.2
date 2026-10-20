@@ -183,7 +183,7 @@ describe("agentTools", () => {
 
         const result = await callTool("search_now", {});
 
-        expect(search.runSavedSearch).toHaveBeenCalledWith("profile-1");
+        expect(search.runSavedSearch).toHaveBeenCalledWith("profile-1", "AGENT");
         expect(JSON.parse(result.text)).toEqual({ summary: "300 ofertas revisadas, 20 nuevas en la cola.", created: 20 });
     });
 

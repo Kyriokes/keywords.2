@@ -11,6 +11,7 @@ const db = vi.hoisted(() => ({
 }));
 const create = vi.hoisted(() => vi.fn());
 const fetchAggregator = vi.hoisted(() => vi.fn());
+const record = vi.hoisted(() => ({ saveSearchRun: vi.fn() }));
 
 vi.mock("@/lib/prisma", () => ({ default: db }));
 vi.mock("@/lib/applications/create", () => ({ createApplicationForProfile: create }));
@@ -32,8 +33,9 @@ vi.mock("@/lib/positions/dictionary", () => ({
     }),
 }));
 vi.mock("./sources", async (importOriginal) => ({ ...(await importOriginal<typeof import("./sources")>()), fetchAggregator }));
+vi.mock("./record", () => record);
 
-import { runJobSearch, type SearchSettingsInput } from "./run";
+import { runAndRecord, runJobSearch, type SearchSettingsInput } from "./run";
 
 const settings: SearchSettingsInput = {
     sources: ["remotive"],
@@ -64,6 +66,7 @@ beforeEach(() => {
     db.jobApplication.findMany.mockResolvedValue([]);
     db.cVKeyword.findMany.mockResolvedValue(["react", "node", "typescript"].map((keywordId) => ({ keywordId })));
     create.mockResolvedValue({ ok: true, data: {} });
+    record.saveSearchRun.mockResolvedValue(undefined);
     fetchAggregator.mockResolvedValue([
         job("1", {}),
         job("2", { location: "USA" }),
@@ -178,5 +181,21 @@ describe("runJobSearch", () => {
 
         expect(result.bySource).toEqual({ remotive: { fetched: 0, fresh: 0, matchedRole: 0, passed: 0, rejected: 0, error: "503 Service Unavailable" } });
         expect(result.offers).toEqual([]);
+    });
+});
+
+describe("runAndRecord", () => {
+    it("guarda la corrida con quién la disparó", async () => {
+        await runAndRecord("profile-1", settings, new Map(), "MANUAL");
+
+        expect(db.jobSearchSettings.update).toHaveBeenCalled();
+        expect(record.saveSearchRun).toHaveBeenCalledWith("profile-1", "MANUAL", expect.objectContaining({ created: 2 }), expect.any(Number));
+    });
+
+    it("si las estadísticas fallan, la búsqueda igual termina bien", async () => {
+        record.saveSearchRun.mockRejectedValue(new Error("db down"));
+
+        await expect(runAndRecord("profile-1", settings)).resolves.toMatchObject({ created: 2 });
+        expect(db.jobSearchSettings.update).toHaveBeenCalled();
     });
 });

@@ -397,7 +397,7 @@ const searchNow = defineTool({
         "Busca ofertas nuevas en los portales con la configuración guardada del usuario y deja en la cola (READY) las que pasan los filtros. Como mucho una vez por hora; llamala al empezar una sesión de postulaciones, antes de get_queue.",
     input: z.object({}),
     run: async (ctx: AgentContext) => {
-        const result = await runSavedSearch(ctx.profileId);
+        const result = await runSavedSearch(ctx.profileId, "AGENT");
         if (!result.ok) throw new ToolError(result.message);
         return result.data;
     },
