@@ -6,7 +6,7 @@ const db = vi.hoisted(() => ({
     jobApplication: { findFirst: vi.fn(), findMany: vi.fn(), findUniqueOrThrow: vi.fn(), update: vi.fn(), updateMany: vi.fn() },
     answerTemplate: { findFirst: vi.fn(), findMany: vi.fn(), count: vi.fn(), create: vi.fn(), update: vi.fn() },
     cvVariant: { create: vi.fn() },
-    applicationAnswer: { deleteMany: vi.fn(), createMany: vi.fn() },
+    applicationAnswer: { deleteMany: vi.fn(), createMany: vi.fn(), groupBy: vi.fn(), findMany: vi.fn() },
     coverLetter: { upsert: vi.fn(), findMany: vi.fn() },
     user: { findUnique: vi.fn() },
     cV: { findFirst: vi.fn(), findMany: vi.fn() },
@@ -27,6 +27,7 @@ vi.mock("next/server", () => ({ after: (task: () => Promise<void>) => task() }))
 const coverLetters = vi.hoisted(() => ({ generateCoverLetterForApplication: vi.fn() }));
 vi.mock("@/lib/applications/coverLetter", () => coverLetters);
 
+import { WRITING_GUIDE } from "@/lib/applications/voice";
 import { handleMcpMessage } from "./mcp";
 import { SERVER_INSTRUCTIONS, agentTools } from "./tools";
 
@@ -47,6 +48,8 @@ async function callTool(name: string, args: unknown) {
 beforeEach(() => {
     vi.clearAllMocks();
     db.$transaction.mockImplementation(async (fn: (tx: typeof db) => Promise<unknown>) => fn(db));
+    db.applicationAnswer.groupBy.mockResolvedValue([]);
+    db.applicationAnswer.findMany.mockResolvedValue([]);
 });
 
 describe("agentTools", () => {
@@ -283,5 +286,51 @@ describe("agentTools", () => {
             { name: "CV ES", isPrimary: false, language: "es", fileUrl: null, filePath: "G:/cv/es.pdf" },
         ]);
     });
-});
 
+    it("list_answer_templates dice el modo, cuántas veces se usó y la última adaptación", async () => {
+        db.answerTemplate.findMany.mockResolvedValue([{ id: "t1", question: "¿Por qué acá?", answer: "Me interesa...", tags: ["motivation"], language: null, mode: "ADAPT" }]);
+        db.applicationAnswer.groupBy.mockResolvedValue([{ templateId: "t1", _count: { _all: 3 } }]);
+        db.applicationAnswer.findMany.mockResolvedValue([{ templateId: "t1", answer: "Vi que trabajan con Next..." }]);
+
+        const result = JSON.parse((await callTool("list_answer_templates", {})).text);
+
+        expect(result.templates[0]).toMatchObject({ mode: "ADAPT", usedCount: 3, lastAdapted: "Vi que trabajan con Next..." });
+    });
+
+    it("save_answer_template guarda el modo y no lo toca al actualizar si no viene", async () => {
+        db.answerTemplate.findFirst.mockResolvedValue(null);
+        db.answerTemplate.count.mockResolvedValue(0);
+        db.answerTemplate.create.mockResolvedValue({ id: "t2" });
+        await callTool("save_answer_template", { question: "Un proyecto", answer: "KeyWords...", mode: "ADAPT" });
+        expect(db.answerTemplate.create).toHaveBeenCalledWith(expect.objectContaining({ data: expect.objectContaining({ mode: "ADAPT" }) }));
+
+        db.answerTemplate.findFirst.mockResolvedValue({ id: "t2" });
+        db.answerTemplate.update.mockResolvedValue({ id: "t2" });
+        await callTool("save_answer_template", { question: "Un proyecto", answer: "KeyWords v2..." });
+        expect(db.answerTemplate.update.mock.calls[0][0].data).not.toHaveProperty("mode");
+    });
+
+    it("record_result guarda de dónde salió cada respuesta", async () => {
+        db.jobApplication.findFirst.mockResolvedValue({ id: "app-1", cvId: null });
+        db.answerTemplate.findMany.mockResolvedValue([]);
+
+        await callTool("record_result", {
+            id: "app-1", status: "APPLIED",
+            answers: [{ question: "Sueldo", answer: "2500 USD", origin: "TEMPLATE" }, { question: "GitHub", answer: "github.com/x" }],
+        });
+
+        expect(db.applicationAnswer.createMany.mock.calls[0][0].data.map((a: { origin: string | null }) => a.origin)).toEqual(["TEMPLATE", null]);
+    });
+
+    it("get_candidate entrega la guía de redacción", async () => {
+        db.user.findUnique.mockResolvedValue({ name: "Sergio", email: "s@example.com" });
+        db.cV.findFirst.mockResolvedValue(null);
+        db.cV.findMany.mockResolvedValue([]);
+        db.mediaAsset.findMany.mockResolvedValue([]);
+        db.coverLetter.findMany.mockResolvedValue([]);
+
+        const result = JSON.parse((await callTool("get_candidate", {})).text);
+
+        expect(result.writingGuide).toBe(WRITING_GUIDE);
+    });
+});
