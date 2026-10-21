@@ -3,7 +3,6 @@
 import { useState, useMemo } from "react";
 import {
   ColumnDef,
-  ColumnFiltersState,
   SortingState,
   flexRender,
   getCoreRowModel,
@@ -30,29 +29,19 @@ import { toast } from "sonner";
 import { SENIORITY_LABELS, isSeniority } from "@/lib/positions/rules";
 import type { KeywordInsights } from "@/actions/insights-actions";
 import { matchByApplication } from "@/lib/stats/keywordAnalysis";
+import {
+  STATUS_COLOR_CLASS,
+  STATUS_LABELS,
+  STATUS_OPTIONS,
+  isApplicationStatus,
+  isStatusFilter,
+  type StatusFilter,
+} from "@/lib/applications/status";
+import { SKIP_REASON_LABELS, isSkipReason } from "@/lib/applications/skipReasons";
+import { usePersistentState } from "@/lib/usePersistentState";
 
-const STATUS_OPTIONS: { value: ApplicationStatus; label: string }[] = [
-  { value: "APPLIED", label: "Enviada" },
-  { value: "INTERVIEW", label: "Entrevista" },
-  { value: "SAVED", label: "Guardada" },
-  { value: "REJECTED", label: "Rechazada" },
-  { value: "READY", label: "En cola" },
-  { value: "APPROVED", label: "Aprobada" },
-  { value: "NEEDS_USER", label: "Requiere acción" },
-  { value: "SKIPPED", label: "Descartada" },
-];
-
-const VALID_STATUS_VALUES = new Set<ApplicationStatus>(STATUS_OPTIONS.map((option) => option.value));
-const STATUS_COLOR_CLASS: Record<ApplicationStatus, string> = {
-  APPLIED: "text-primary",
-  INTERVIEW: "text-amber-600",
-  SAVED: "text-muted-foreground",
-  REJECTED: "text-red-600",
-  READY: "text-muted-foreground",
-  APPROVED: "text-primary",
-  NEEDS_USER: "text-amber-600",
-  SKIPPED: "text-muted-foreground",
-};
+// El filtro por estado se recuerda entre visitas
+const STATUS_FILTER_KEY = "keywords:historial:estado";
 
 interface ApplicationsTableProps {
   /** Keywords de las postulaciones cruzadas con el CV activo; null mientras cargan. */
@@ -68,9 +57,21 @@ export function ApplicationsTable({ insights }: ApplicationsTableProps) {
     [insights]
   );
   const [sorting, setSorting] = useState<SortingState>([]);
-  const [columnFilters, setColumnFilters] = useState<ColumnFiltersState>([]);
+  const [statusFilter, setStatusFilter] = usePersistentState<StatusFilter>(STATUS_FILTER_KEY, "all", isStatusFilter);
+  // El único filtro por columna es el de estado: se deriva del selector
+  const columnFilters = useMemo(
+    () => (statusFilter === "all" ? [] : [{ id: "status", value: statusFilter }]),
+    [statusFilter]
+  );
   const [globalFilter, setGlobalFilter] = useState("");
   const [selectedApp, setSelectedApp] = useState<JobApplication | null>(null);
+
+  // Cuántas hay de cada estado, para mostrarlo en el selector
+  const statusCounts = useMemo(() => {
+    const counts = new Map<string, number>();
+    for (const app of applications) counts.set(app.status, (counts.get(app.status) ?? 0) + 1);
+    return counts;
+  }, [applications]);
 
   const suggestions = useMemo(() => {
     if (!applications) return [];
@@ -99,7 +100,7 @@ export function ApplicationsTable({ insights }: ApplicationsTableProps) {
   };
 
   const getSafeStatus = (status: string | undefined): ApplicationStatus =>
-    VALID_STATUS_VALUES.has(status as ApplicationStatus) ? (status as ApplicationStatus) : "APPLIED";
+    isApplicationStatus(status) ? status : "APPLIED";
 
   const columns: ColumnDef<JobApplication>[] = [
     {
@@ -218,6 +219,8 @@ export function ApplicationsTable({ insights }: ApplicationsTableProps) {
     },
     {
       id: "status",
+      accessorKey: "status",
+      filterFn: "equals",
       header: () => <div className="text-right">Estado</div>,
       cell: ({ row }) => {
         const app = row.original;
@@ -270,7 +273,6 @@ export function ApplicationsTable({ insights }: ApplicationsTableProps) {
     data: applications,
     columns,
     onSortingChange: setSorting,
-    onColumnFiltersChange: setColumnFilters,
     onGlobalFilterChange: setGlobalFilter,
     globalFilterFn: (row, columnId, filterValue) => {
       const search = filterValue.toLowerCase();
@@ -292,7 +294,7 @@ export function ApplicationsTable({ insights }: ApplicationsTableProps) {
 
   return (
     <div className="w-full space-y-4">
-      <div className="flex items-center py-4">
+      <div className="flex flex-wrap items-center gap-3 py-4">
         <Input
           placeholder="Filtrar por título o palabra clave..."
           value={globalFilter ?? ""}
@@ -305,6 +307,19 @@ export function ApplicationsTable({ insights }: ApplicationsTableProps) {
             <option key={index} value={item} />
           ))}
         </datalist>
+        <Select value={statusFilter} onValueChange={(value) => setStatusFilter(isStatusFilter(value) ? value : "all")}>
+          <SelectTrigger className="w-[220px]" aria-label="Filtrar por estado">
+            <SelectValue />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="all">Todos los estados ({applications.length})</SelectItem>
+            {STATUS_OPTIONS.map((option) => (
+              <SelectItem key={option.value} value={option.value} className={STATUS_COLOR_CLASS[option.value]}>
+                {option.label} ({statusCounts.get(option.value) ?? 0})
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
       </div>
       <div className="rounded-md border">
         <Table>
@@ -349,7 +364,9 @@ export function ApplicationsTable({ insights }: ApplicationsTableProps) {
                   colSpan={columns.length}
                   className="h-24 text-center"
                 >
-                  No hay resultados.
+                  {statusFilter === "all"
+                    ? "No hay resultados."
+                    : `No hay postulaciones en estado "${STATUS_LABELS[statusFilter]}".`}
                 </TableCell>
               </TableRow>
             )}
@@ -403,6 +420,17 @@ export function ApplicationsTable({ insights }: ApplicationsTableProps) {
               </CardDescription>
             </CardHeader>
             <CardContent className="space-y-4">
+              {(selectedApp.notes || selectedApp.skipReason) && (
+                <div className="space-y-1 rounded-md bg-muted px-3 py-2 text-sm">
+                  {isSkipReason(selectedApp.skipReason) && (
+                    <p>
+                      <span className="font-medium">Descartada:</span> {SKIP_REASON_LABELS[selectedApp.skipReason]}
+                      {selectedApp.skipDetail && ` (${selectedApp.skipDetail})`}
+                    </p>
+                  )}
+                  {selectedApp.notes && <p className="whitespace-pre-wrap">{selectedApp.notes}</p>}
+                </div>
+              )}
               <div>
                 <h4 className="font-semibold mb-2">Descripción del Puesto</h4>
                 <div className="text-sm text-muted-foreground whitespace-pre-wrap">

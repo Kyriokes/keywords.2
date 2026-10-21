@@ -22,6 +22,15 @@ export interface JobApplication {
   /** Formulario de postulación externo, si es distinto de `link`. */
   applyUrl?: string;
   applyMode?: string;
+  /** Portal de donde salió la oferta (himalayas, greenhouse, manual...). */
+  source?: string;
+  /** Match con el CV calculado al ingresar, de 0 a 100. */
+  score?: number;
+  /** Resumen del ingreso (modalidad, años, match) y lo que anotó Claude al postular. */
+  notes?: string;
+  /** Por qué se descartó y qué lo motivó; valores en src/lib/applications/skipReasons.ts. */
+  skipReason?: string;
+  skipDetail?: string;
 }
 
 export interface PendingApplication {

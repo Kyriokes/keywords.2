@@ -76,6 +76,7 @@ model Profile {
   answerTemplates AnswerTemplate[]
   mediaAssets     MediaAsset[]
   jobSearch       JobSearchSettings?
+  searchPreferences SearchPreference[]
 
   // Estadísticas de la búsqueda
   searchRuns     SearchRun[]
@@ -195,6 +196,8 @@ model JobApplication {
   score      Int? // Qué tan bien encaja con el CV, de 0 a 100
   appliedAt  DateTime? // Cuándo se envió de verdad (no cuándo se cargó)
   notes      String?   @db.Text
+  skipReason String? // Por qué se descartó; valores en src/lib/applications/skipReasons.ts (SKIP_REASONS)
+  skipDetail String? // Qué lo motivó: la tecnología, la empresa o la frase ("Go", "alemán")
 
   // Versión del CV adaptada para esta oferta, si se usó una
   cvVariantId String?
@@ -328,6 +331,10 @@ model JobSearchSettings {
   workModes              String[]  @default(["REMOTE", "REMOTE_US_HOURS", "HYBRID"]) // Modalidades aceptadas; valores en src/lib/ingest/eligibility.ts
   seniorityPolicy        String    @default("FLEXIBLE") // Hasta qué nivel postular; valores en src/lib/ingest/eligibility.ts
   minRelocationSalaryUsd Int? // Sueldo publicado (USD por mes) que tiene que superar una oferta para aceptar mudarse; null = nunca
+  autoApproveMinScore    Int? // Match desde el que una oferta sin advertencias y con formulario externo entra aprobada; null = nunca
+  minSalaryUsdMonthly    Int? // Sueldo mínimo en USD por mes: una oferta que publica menos se descarta
+  minSalaryArsMonthly    Int? // Sueldo mínimo en ARS por mes para ofertas locales (lo usa el agente, no el filtro)
+  maxPerCompanyPerMonth  Int       @default(2) // Postulaciones a la misma empresa en 30 días
   lastRunAt              DateTime?
   lastResult             String? // Resumen de la última búsqueda, para mostrar en la app
   createdAt              DateTime  @default(now())
@@ -335,6 +342,23 @@ model JobSearchSettings {
 
   profileId String  @unique
   profile   Profile @relation(fields: [profileId], references: [id], onDelete: Cascade)
+}
+
+// Lo que KeyWords sabe que el usuario no quiere: lo cargó él o lo aprendió de un descarte
+model SearchPreference {
+  id        String   @id @default(cuid())
+  kind      String // AVOID_TECH | AVOID_COMPANY | AVOID_PHRASE; valores en src/lib/preferences/kinds.ts
+  value     String // Como se muestra: "PHP", "Fueled", "talent pool"
+  valueKey  String // value en minúsculas y sin acentos, para no repetir
+  origin    String   @default("USER") // USER (lo cargó el usuario) o LEARNED (salió de un descarte)
+  note      String? // "Descartaste Draftboard (Backend Engineer NestJS/Go) el 20/10/2026"
+  createdAt DateTime @default(now())
+
+  profileId String
+  profile   Profile @relation(fields: [profileId], references: [id], onDelete: Cascade)
+
+  @@unique([profileId, kind, valueKey])
+  @@index([profileId])
 }
 
 // Token personal para conectar un agente (Claude Code). Solo se guarda el hash.

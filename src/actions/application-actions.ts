@@ -56,7 +56,12 @@ function toStoreApplication(app: ApplicationWithRelations) {
     status: app.status || "APPLIED",
     company: app.company || undefined,
     applyUrl: app.applyUrl || undefined,
-    applyMode: app.applyMode || undefined
+    applyMode: app.applyMode || undefined,
+    source: app.source || undefined,
+    score: app.score ?? undefined,
+    notes: app.notes || undefined,
+    skipReason: app.skipReason || undefined,
+    skipDetail: app.skipDetail || undefined
   }
 }
 

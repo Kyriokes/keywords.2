@@ -1,5 +1,7 @@
 import { z } from "zod";
 import { SENIORITY_POLICIES, WORK_MODES } from "@/lib/ingest/eligibility";
+import { SKIP_REASONS } from "@/lib/applications/skipReasons";
+import { PREFERENCE_KINDS } from "@/lib/preferences/kinds";
 
 export const LIMITS = {
     title: 200,
@@ -31,6 +33,10 @@ export const LIMITS = {
     atsBoards: 30,
     cvFilePath: 500,
     searchMaxPerRun: 60,
+    preferences: 200,
+    preferenceValue: 80,
+    skipDetail: 200,
+    maxPerCompanyPerMonth: 10,
 } as const;
 
 /** Resultado de las server actions cuyos errores esperados se muestran al usuario. */
@@ -233,6 +239,30 @@ export const jobSearchSettingsSchema = z.object({
     seniorityPolicy: z.enum(SENIORITY_POLICIES),
     // Vacío = nunca aceptar mudarse
     minRelocationSalaryUsd: z.number().int().min(0).max(1_000_000).nullable().default(null),
+    // Vacío = nunca aprobar sola
+    autoApproveMinScore: z.number().int().min(0).max(100).nullable().default(null),
+    // Vacío = no mirar el sueldo publicado
+    minSalaryUsdMonthly: z.number().int().min(0).max(1_000_000).nullable().default(null),
+    minSalaryArsMonthly: z.number().int().min(0).max(1_000_000_000).nullable().default(null),
+    maxPerCompanyPerMonth: z.number().int().min(1).max(LIMITS.maxPerCompanyPerMonth).default(2),
+});
+
+/** Reglas de la búsqueda que el agente puede cambiar desde el chat; todas opcionales, se guarda solo lo que viene. */
+export const searchRulesSchema = jobSearchSettingsSchema
+    .pick({ autoApproveMinScore: true, minSalaryUsdMonthly: true, minSalaryArsMonthly: true, maxPerCompanyPerMonth: true })
+    .partial();
+
+/** Una preferencia del usuario: tecnología o empresa a evitar, o una frase que descarta la oferta. */
+export const preferenceSchema = z.object({
+    kind: z.enum(PREFERENCE_KINDS),
+    value: z.string().trim().min(1, "Escribí qué evitar.").max(LIMITS.preferenceValue, "El valor es demasiado largo."),
+    note: z.string().trim().max(LIMITS.notes).optional(),
+});
+
+/** Motivo de un descarte hecho por el usuario (en la web o en el chat). */
+export const skipReasonSchema = z.object({
+    reason: z.enum(SKIP_REASONS).optional(),
+    detail: z.string().trim().max(LIMITS.skipDetail).optional(),
 });
 
 /** Idiomas en los que el usuario puede tener su CV; `/postular` elige el del idioma de la oferta. */
