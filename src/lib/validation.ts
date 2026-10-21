@@ -248,9 +248,12 @@ export const jobSearchSettingsSchema = z.object({
 });
 
 /** Reglas de la búsqueda que el agente puede cambiar desde el chat; todas opcionales, se guarda solo lo que viene. */
-export const searchRulesSchema = jobSearchSettingsSchema
-    .pick({ autoApproveMinScore: true, minSalaryUsdMonthly: true, minSalaryArsMonthly: true, maxPerCompanyPerMonth: true })
-    .partial();
+export const searchRulesSchema = z.object({
+    autoApproveMinScore: z.number().int().min(0).max(100).nullable().optional(),
+    minSalaryUsdMonthly: z.number().int().min(0).max(1_000_000).nullable().optional(),
+    minSalaryArsMonthly: z.number().int().min(0).max(1_000_000_000).nullable().optional(),
+    maxPerCompanyPerMonth: z.number().int().min(1).max(LIMITS.maxPerCompanyPerMonth).optional(),
+});
 
 /** Una preferencia del usuario: tecnología o empresa a evitar, o una frase que descarta la oferta. */
 export const preferenceSchema = z.object({

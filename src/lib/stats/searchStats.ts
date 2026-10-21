@@ -1,4 +1,5 @@
 // Resúmenes de las estadísticas de la búsqueda. Todo puro, sin Prisma: lo usan la página y la herramienta del agente.
+import { SKIP_REASON_LABELS, isSkipReason } from "@/lib/applications/skipReasons";
 import { sourceLabel, type SourceStats } from "@/lib/ingest/stats";
 
 export const STATS_PERIODS = [7, 30, 90] as const;
@@ -18,6 +19,9 @@ export interface ApplicationRow {
     source: string | null;
     status: string;
     company: string | null;
+    /** Por qué la descartó el usuario, si fue él (valores en src/lib/applications/skipReasons.ts). */
+    skipReason?: string | null;
+    skipDetail?: string | null;
 }
 export interface AnswerRow {
     question: string;
@@ -157,6 +161,48 @@ export function summarizeReasons(reasons: (string | null)[]): ReasonCount[] {
     return Array.from(countBy(labels, (label) => label), ([label, count]) => ({ label, count })).sort(
         (a, b) => b.count - a.count || byLabel(a.label, b.label)
     );
+}
+
+export interface UserReasonCount extends ReasonCount {
+    /** Los detalles más repetidos del motivo: "Go ×3", "PHP ×2". */
+    details: string[];
+}
+
+/** Máximo de detalles que se muestran por motivo. */
+const MAX_DETAILS = 3;
+
+/**
+ * Por qué descartó el usuario (SKIPPED con motivo), agrupado por motivo con su etiqueta y los detalles más
+ * repetidos. Los descartes sin motivo se cuentan como "Sin motivo". Orden: count desc, label.
+ */
+export function summarizeUserSkips(applications: ApplicationRow[]): UserReasonCount[] {
+    type Group = { label: string; count: number; details: Map<string, { detail: string; count: number }> };
+    const groups = new Map<string, Group>();
+    for (const application of applications) {
+        if (application.status !== "SKIPPED") continue;
+        const reason = application.skipReason ?? null;
+        const label = isSkipReason(reason) ? SKIP_REASON_LABELS[reason] : "Sin motivo";
+        const group = groups.get(label) ?? { label, count: 0, details: new Map() };
+        group.count++;
+        const detail = application.skipDetail?.trim();
+        if (detail) {
+            // "Go" y "go" son el mismo detalle; se muestra como apareció primero
+            const entry = group.details.get(detail.toLowerCase()) ?? { detail, count: 0 };
+            entry.count++;
+            group.details.set(detail.toLowerCase(), entry);
+        }
+        groups.set(label, group);
+    }
+    return Array.from(groups.values())
+        .map((group) => ({
+            label: group.label,
+            count: group.count,
+            details: Array.from(group.details.values())
+                .sort((a, b) => b.count - a.count || byLabel(a.detail, b.detail))
+                .slice(0, MAX_DETAILS)
+                .map((entry) => (entry.count > 1 ? `${entry.detail} ×${entry.count}` : entry.detail)),
+        }))
+        .sort((a, b) => b.count - a.count || byLabel(a.label, b.label));
 }
 
 export interface Funnel {

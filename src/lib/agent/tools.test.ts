@@ -7,7 +7,7 @@ const db = vi.hoisted(() => ({
     answerTemplate: { findFirst: vi.fn(), findMany: vi.fn(), count: vi.fn(), create: vi.fn(), update: vi.fn() },
     cvVariant: { create: vi.fn() },
     applicationAnswer: { deleteMany: vi.fn(), createMany: vi.fn(), groupBy: vi.fn(), findMany: vi.fn() },
-    coverLetter: { upsert: vi.fn(), findMany: vi.fn() },
+    coverLetter: { upsert: vi.fn(), findMany: vi.fn(), findUnique: vi.fn() },
     user: { findUnique: vi.fn() },
     cV: { findFirst: vi.fn(), findMany: vi.fn() },
     mediaAsset: { findMany: vi.fn() },
@@ -15,17 +15,22 @@ const db = vi.hoisted(() => ({
 }));
 
 vi.mock("@/lib/prisma", () => ({ default: db }));
-vi.mock("@/lib/applications/create", () => ({ createApplicationForProfile: vi.fn() }));
+const create = vi.hoisted(() => ({ createApplicationForProfile: vi.fn() }));
+vi.mock("@/lib/applications/create", () => create);
 const positions = vi.hoisted(() => ({ getDesiredRolesForProfile: vi.fn(), saveDesiredRoles: vi.fn() }));
 vi.mock("@/lib/positions/save", () => positions);
 const search = vi.hoisted(() => ({ runSavedSearch: vi.fn() }));
 vi.mock("@/lib/ingest/run", () => search);
 const stats = vi.hoisted(() => ({ loadSearchStats: vi.fn() }));
 vi.mock("@/lib/stats/searchStatsQuery", () => stats);
-// Lo programado con after() se corre en el momento, para poder verlo en el test
-vi.mock("next/server", () => ({ after: (task: () => Promise<void>) => task() }));
 const coverLetters = vi.hoisted(() => ({ generateCoverLetterForApplication: vi.fn() }));
 vi.mock("@/lib/applications/coverLetter", () => coverLetters);
+const skip = vi.hoisted(() => ({ skipApplications: vi.fn() }));
+vi.mock("@/lib/applications/skip", () => skip);
+const preferences = vi.hoisted(() => ({ listPreferences: vi.fn(), savePreference: vi.fn(), deletePreference: vi.fn() }));
+vi.mock("@/lib/preferences/preferences", () => preferences);
+const settings = vi.hoisted(() => ({ loadSearchSettings: vi.fn(), updateSearchRules: vi.fn() }));
+vi.mock("@/lib/ingest/settings", () => settings);
 
 import { WRITING_GUIDE } from "@/lib/applications/voice";
 import { handleMcpMessage } from "./mcp";
@@ -50,14 +55,119 @@ beforeEach(() => {
     db.$transaction.mockImplementation(async (fn: (tx: typeof db) => Promise<unknown>) => fn(db));
     db.applicationAnswer.groupBy.mockResolvedValue([]);
     db.applicationAnswer.findMany.mockResolvedValue([]);
+    skip.skipApplications.mockImplementation(async (_profileId: string, items: { id: string }[]) => ({
+        skipped: items.map((item) => item.id),
+        learned: [],
+    }));
 });
 
 describe("agentTools", () => {
     it("publica un schema de entrada para cada herramienta", async () => {
         const response = await handleMcpMessage({ jsonrpc: "2.0", id: 1, method: "tools/list" }, ctx, agentTools, info);
         const tools = (response?.result as { tools: { name: string; inputSchema: { type: string } }[] }).tools;
-        expect(tools.map((tool) => tool.name)).toContain("record_result");
+        const names = tools.map((tool) => tool.name);
+        expect(names).toContain("record_result");
+        expect(names).toEqual(
+            expect.arrayContaining(["get_preferences", "save_preference", "delete_preference", "set_search_rules", "prepare_cover_letter"])
+        );
         for (const tool of tools) expect(tool.inputSchema.type, tool.name).toBe("object");
+    });
+
+    it("la cola se puede filtrar por quién envía el formulario", async () => {
+        db.jobApplication.findMany.mockResolvedValue([]);
+
+        await callTool("get_queue", { status: "APPROVED", applyMode: "EXTERNAL_FORM" });
+
+        expect(db.jobApplication.findMany).toHaveBeenCalledWith(
+            expect.objectContaining({ where: { profileId: "profile-1", status: "APPROVED", applyMode: "EXTERNAL_FORM" } })
+        );
+    });
+
+    it("add_offer deja como manual una oferta cuyo formulario está en Indeed, aunque el agente diga otra cosa", async () => {
+        create.createApplicationForProfile.mockResolvedValue({
+            ok: true,
+            data: { application: { id: "app-9", status: "READY", applyMode: "UNSUPPORTED", jobTitle: "Dev" } },
+        });
+
+        await callTool("add_offer", {
+            jobTitle: "Dev",
+            jobDescription: "...",
+            link: "https://ar.indeed.com/viewjob?jk=1",
+            applyUrl: "https://ar.indeed.com/applystart?jk=1",
+            applyMode: "EXTERNAL_FORM",
+        });
+        expect(create.createApplicationForProfile.mock.calls[0][1]).toMatchObject({ applyMode: "UNSUPPORTED", source: "agent" });
+
+        await callTool("add_offer", { jobTitle: "Dev", jobDescription: "...", link: "https://jobs.lever.co/acme/1" });
+        expect(create.createApplicationForProfile.mock.calls[1][1]).toMatchObject({ applyMode: "EXTERNAL_FORM" });
+    });
+
+    it("record_result suma sus notas a las del ingreso en vez de pisarlas", async () => {
+        db.jobApplication.findFirst.mockResolvedValue({ id: "app-1", cvId: null, notes: "Remoto · match 58%" });
+
+        await callTool("record_result", { id: "app-1", status: "APPLIED", notes: "Enviada por Ashby el 20/10/2026" });
+
+        expect(db.jobApplication.update.mock.calls[0][0].data.notes).toBe("Remoto · match 58%\nEnviada por Ashby el 20/10/2026");
+    });
+
+    it("record_result con SKIPPED guarda el motivo y devuelve lo aprendido", async () => {
+        db.jobApplication.findFirst.mockResolvedValue({ id: "app-1", cvId: null, notes: null });
+        skip.skipApplications.mockResolvedValue({ skipped: ["app-1"], learned: [{ kind: "AVOID_TECH", value: "Go" }] });
+
+        const result = JSON.parse((await callTool("record_result", { id: "app-1", status: "SKIPPED", reason: "TECH", detail: "Go" })).text);
+
+        expect(skip.skipApplications).toHaveBeenCalledWith("profile-1", [{ id: "app-1", reason: "TECH", detail: "Go" }], ["SKIPPED"]);
+        expect(result.learned).toEqual([{ kind: "AVOID_TECH", value: "Go" }]);
+    });
+
+    it("get_preferences junta las reglas de la búsqueda con las preferencias", async () => {
+        settings.loadSearchSettings.mockResolvedValue({
+            workModes: ["REMOTE"], seniorityPolicy: "FLEXIBLE", minScore: 40, minRelocationSalaryUsd: 2500,
+            autoApproveMinScore: 60, minSalaryUsdMonthly: 2500, minSalaryArsMonthly: 3500000, maxPerCompanyPerMonth: 2, exists: true,
+        });
+        preferences.listPreferences.mockResolvedValue([{ id: "p1", kind: "AVOID_TECH", value: "PHP", origin: "LEARNED", note: null, createdAt: "2026-10-20T00:00:00.000Z" }]);
+
+        const result = JSON.parse((await callTool("get_preferences", {})).text);
+
+        expect(result.rules).toEqual({
+            workModes: ["REMOTE"], seniorityPolicy: "FLEXIBLE", minScore: 40, minRelocationSalaryUsd: 2500,
+            autoApproveMinScore: 60, minSalaryUsdMonthly: 2500, minSalaryArsMonthly: 3500000, maxPerCompanyPerMonth: 2,
+        });
+        expect(result.preferences[0]).toMatchObject({ kind: "AVOID_TECH", value: "PHP", origin: "LEARNED" });
+    });
+
+    it("save_preference guarda como del usuario y delete_preference avisa si no existe", async () => {
+        preferences.savePreference.mockResolvedValue({ ok: true, data: { id: "p1", value: "Go", created: true } });
+        await callTool("save_preference", { kind: "AVOID_TECH", value: "Go" });
+        expect(preferences.savePreference).toHaveBeenCalledWith("profile-1", { kind: "AVOID_TECH", value: "Go", origin: "USER" });
+
+        preferences.deletePreference.mockResolvedValue(false);
+        expect((await callTool("delete_preference", { id: "p-de-otro" })).isError).toBe(true);
+    });
+
+    it("set_search_rules guarda solo lo que viene y rechaza valores fuera de rango", async () => {
+        settings.updateSearchRules.mockResolvedValue({ autoApproveMinScore: 60, minSalaryUsdMonthly: null, minSalaryArsMonthly: null, maxPerCompanyPerMonth: 2 });
+
+        await callTool("set_search_rules", { autoApproveMinScore: 60 });
+        expect(settings.updateSearchRules).toHaveBeenCalledWith("profile-1", { autoApproveMinScore: 60 });
+
+        expect((await callTool("set_search_rules", { autoApproveMinScore: 150 })).isError).toBe(true);
+        expect((await callTool("set_search_rules", {})).isError).toBe(true);
+    });
+
+    it("prepare_cover_letter devuelve la carta guardada o la genera", async () => {
+        db.jobApplication.findFirst.mockResolvedValue({ id: "app-1" });
+        db.coverLetter.findUnique.mockResolvedValue({ text: "Hola equipo..." });
+        expect(JSON.parse((await callTool("prepare_cover_letter", { id: "app-1" })).text)).toEqual({ text: "Hola equipo...", generated: false });
+        expect(coverLetters.generateCoverLetterForApplication).not.toHaveBeenCalled();
+
+        db.coverLetter.findUnique.mockResolvedValue(null);
+        coverLetters.generateCoverLetterForApplication.mockResolvedValue({ ok: true, data: { text: "carta nueva" } });
+        expect(JSON.parse((await callTool("prepare_cover_letter", { id: "app-1" })).text)).toEqual({ text: "carta nueva", generated: true });
+        expect(coverLetters.generateCoverLetterForApplication).toHaveBeenCalledWith("profile-1", "app-1");
+
+        coverLetters.generateCoverLetterForApplication.mockResolvedValue({ ok: false, code: "LIMIT_REACHED", message: "Llegaste al máximo" });
+        expect((await callTool("prepare_cover_letter", { id: "app-1" })).isError).toBe(true);
     });
 
     it("busca las ofertas siempre dentro del perfil del token", async () => {
@@ -217,12 +327,11 @@ describe("agentTools", () => {
         expect((await callTool("get_search_stats", { days: 15 })).isError).toBe(true);
     });
 
-    it("aprueba y descarta ofertas del perfil del token y prepara la carta de las aprobadas", async () => {
+    it("aprueba y descarta ofertas del perfil del token sin generar cartas", async () => {
         db.jobApplication.findMany.mockResolvedValue([
             { id: "app-1", status: "READY" },
             { id: "app-2", status: "READY" },
         ]);
-        coverLetters.generateCoverLetterForApplication.mockResolvedValue({ ok: true, data: { text: "carta" } });
 
         const result = await callTool("review_offers", { approve: ["app-1", "app-otro-perfil"], skip: ["app-2"] });
 
@@ -231,17 +340,37 @@ describe("agentTools", () => {
             select: { id: true, status: true },
         });
         expect(db.jobApplication.updateMany).toHaveBeenCalledWith({ where: { id: { in: ["app-1"] }, profileId: "profile-1" }, data: { status: "APPROVED" } });
-        expect(db.jobApplication.updateMany).toHaveBeenCalledWith({ where: { id: { in: ["app-2"] }, profileId: "profile-1" }, data: { status: "SKIPPED" } });
-        expect(coverLetters.generateCoverLetterForApplication).toHaveBeenCalledWith("profile-1", "app-1");
-        expect(JSON.parse(result.text)).toEqual({ approved: 1, skipped: 1, notFound: ["app-otro-perfil"] });
+        expect(skip.skipApplications).toHaveBeenCalledWith("profile-1", [{ id: "app-2" }], ["READY", "APPROVED", "NEEDS_USER"]);
+        // La carta se genera cuando el formulario la pide (prepare_cover_letter), no al aprobar
+        expect(coverLetters.generateCoverLetterForApplication).not.toHaveBeenCalled();
+        expect(JSON.parse(result.text)).toEqual({ approved: 1, skipped: 1, learned: [], notFound: ["app-otro-perfil"] });
     });
 
-    it("no vuelve a preparar la carta de una oferta que ya estaba aprobada", async () => {
-        db.jobApplication.findMany.mockResolvedValue([{ id: "app-1", status: "APPROVED" }]);
+    it("los descartes con motivo aprenden y lo cuentan", async () => {
+        db.jobApplication.findMany.mockResolvedValue([
+            { id: "app-2", status: "READY" },
+            { id: "app-3", status: "APPROVED" },
+        ]);
+        skip.skipApplications.mockResolvedValue({ skipped: ["app-2", "app-3"], learned: [{ kind: "AVOID_TECH", value: "PHP" }] });
 
-        await callTool("review_offers", { approve: ["app-1"] });
+        const result = await callTool("review_offers", {
+            skip: [{ id: "app-2", reason: "TECH", detail: "PHP" }, { id: "app-3", reason: "LANGUAGE", detail: "alemán" }, "app-ajena"],
+        });
 
-        expect(coverLetters.generateCoverLetterForApplication).not.toHaveBeenCalled();
+        expect(skip.skipApplications).toHaveBeenCalledWith(
+            "profile-1",
+            [{ id: "app-2", reason: "TECH", detail: "PHP" }, { id: "app-3", reason: "LANGUAGE", detail: "alemán" }],
+            ["READY", "APPROVED", "NEEDS_USER"]
+        );
+        expect(JSON.parse(result.text)).toEqual({ approved: 0, skipped: 2, learned: [{ kind: "AVOID_TECH", value: "PHP" }], notFound: ["app-ajena"] });
+    });
+
+    it("una oferta aprobada y descartada a la vez solo se aprueba", async () => {
+        db.jobApplication.findMany.mockResolvedValue([{ id: "app-1", status: "READY" }]);
+
+        await callTool("review_offers", { approve: ["app-1"], skip: [{ id: "app-1", reason: "OTHER" }] });
+
+        expect(skip.skipApplications).not.toHaveBeenCalled();
     });
 
     it("pide al menos una oferta para revisar", async () => {
@@ -295,6 +424,23 @@ describe("agentTools", () => {
         const result = JSON.parse((await callTool("list_answer_templates", {})).text);
 
         expect(result.templates[0]).toMatchObject({ mode: "ADAPT", usedCount: 3, lastAdapted: "Vi que trabajan con Next..." });
+    });
+
+    it("la última adaptación saltea las opciones elegidas de un desplegable", async () => {
+        db.answerTemplate.findMany.mockResolvedValue([
+            { id: "salario", question: "Pretensión salarial", answer: "2500 USD", tags: [], language: null, mode: "VERBATIM" },
+            { id: "motivo", question: "¿Por qué acá?", answer: "Me interesa...", tags: [], language: null, mode: "ADAPT" },
+        ]);
+        db.applicationAnswer.findMany.mockResolvedValue([
+            { templateId: "salario", answer: "$25,000 - $30,000" },
+            { templateId: "motivo", answer: "Yes" },
+            { templateId: "motivo", answer: "Vi que el producto resuelve algo que uso todos los días." },
+        ]);
+
+        const result = JSON.parse((await callTool("list_answer_templates", {})).text);
+
+        expect(result.templates.find((t: { id: string }) => t.id === "salario").lastAdapted).toBeNull();
+        expect(result.templates.find((t: { id: string }) => t.id === "motivo").lastAdapted).toBe("Vi que el producto resuelve algo que uso todos los días.");
     });
 
     it("save_answer_template guarda el modo y no lo toca al actualizar si no viene", async () => {

@@ -6,6 +6,7 @@ import { toast } from 'sonner'
 import { Badge } from '@/components/ui/badge'
 import { Input } from '@/components/ui/input'
 import { Button } from '@/components/ui/button'
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { Textarea } from '@/components/ui/textarea'
 import { updateApplicationStatus } from '@/actions/application-actions'
@@ -13,9 +14,12 @@ import {
     approveQueueByScore,
     generateApplicationCoverLetter,
     saveApplicationCoverLetter,
+    skipApplication,
     type QueueData,
     type QueueItem,
 } from '@/actions/queue-actions'
+import { SKIP_REASONS, SKIP_REASON_LABELS, isSkipReason, type SkipReason } from '@/lib/applications/skipReasons'
+import { LEARNED_LABELS } from '@/lib/preferences/kinds'
 import type { ApplicationStatusValue } from '@/lib/validation'
 
 const APPLY_MODE_LABELS: Record<string, string> = {
@@ -57,6 +61,53 @@ const ACTIONS: Record<string, StatusAction[]> = {
 
 type QueueCardVariant = 'pending' | 'submitted'
 type OnStatus = (item: QueueItem, status: ApplicationStatusValue) => void
+type OnSkip = (item: QueueItem, reason: SkipReason | undefined, detail: string | undefined) => Promise<void>
+
+/** Descartar pide el motivo: con eso KeyWords aprende qué no traer más. */
+function SkipForm({ onSkip, onCancel }: { onSkip: (reason: SkipReason | undefined, detail: string | undefined) => Promise<void>; onCancel: () => void }) {
+    const [reason, setReason] = useState<SkipReason | ''>('')
+    const [detail, setDetail] = useState('')
+    const [busy, setBusy] = useState(false)
+
+    const submit = async () => {
+        setBusy(true)
+        try {
+            await onSkip(reason || undefined, detail.trim() || undefined)
+        } finally {
+            setBusy(false)
+        }
+    }
+
+    const detailPlaceholder = reason === 'TECH' ? 'Qué tecnología (Go, PHP, Java…)' : reason === 'COMPANY' ? 'Empresa (si no es la de la oferta)' : reason === 'LANGUAGE' ? 'Qué idioma (alemán, portugués…)' : 'Detalle (opcional)'
+
+    return (
+        <div className="flex flex-wrap items-center gap-2 rounded-md border p-2 text-sm">
+            <Select value={reason} onValueChange={(value) => setReason(isSkipReason(value) ? value : '')}>
+                <SelectTrigger className="w-[220px]" aria-label="Motivo del descarte">
+                    <SelectValue placeholder="¿Por qué? (opcional)" />
+                </SelectTrigger>
+                <SelectContent>
+                    {SKIP_REASONS.map((value) => (
+                        <SelectItem key={value} value={value}>
+                            {SKIP_REASON_LABELS[value]}
+                        </SelectItem>
+                    ))}
+                </SelectContent>
+            </Select>
+            <Input value={detail} onChange={(event) => setDetail(event.target.value)} placeholder={detailPlaceholder} className="w-60" maxLength={200} />
+            <Button size="sm" variant="ghost" onClick={submit} disabled={busy}>
+                {busy ? <Loader2 className="size-4 animate-spin" /> : <X className="size-4" />}
+                Descartar
+            </Button>
+            <Button size="sm" variant="outline" onClick={onCancel} disabled={busy}>
+                Cancelar
+            </Button>
+            {(reason === 'TECH' || reason === 'COMPANY') && (
+                <p className="basis-full text-xs text-muted-foreground">KeyWords va a dejar de traer ofertas así.</p>
+            )}
+        </div>
+    )
+}
 
 /** Estados que tienen botones en cada pestaña: las enviadas solo marcan la respuesta de la empresa. */
 const STATUSES_WITH_ACTIONS: Record<QueueCardVariant, string[]> = {
@@ -111,7 +162,7 @@ function CoverLetterEditor({ item }: { item: QueueItem }) {
                     <Textarea value={text} onChange={(event) => setText(event.target.value)} className="min-h-48" />
                 ) : (
                     <p className="text-muted-foreground">
-                        Todavía no hay carta. Se genera sola al aprobar la oferta, o generala ahora.
+                        Todavía no hay carta. Claude la genera solo si el formulario tiene campo de carta; también podés generarla ahora.
                     </p>
                 )}
                 <div className="flex flex-wrap gap-2">
@@ -131,12 +182,19 @@ function CoverLetterEditor({ item }: { item: QueueItem }) {
     )
 }
 
-function QueueCard({ item, variant, onStatus }: { item: QueueItem; variant: QueueCardVariant; onStatus: OnStatus }) {
+function QueueCard({ item, variant, onStatus, onSkip }: { item: QueueItem; variant: QueueCardVariant; onStatus: OnStatus; onSkip?: OnSkip }) {
+    const [skipping, setSkipping] = useState(false)
     const formUrl = item.applyUrl ?? item.link
     // En las pendientes la carta se edita aparte; en las enviadas es parte de lo que se envió
     const isPending = variant === 'pending'
     const hasRecord = item.answers.length > 0 || !!item.cvVariantName || (!isPending && !!item.coverLetter)
     const actions = STATUSES_WITH_ACTIONS[variant].includes(item.status) ? ACTIONS[item.status] : undefined
+
+    const act = (action: StatusAction) => {
+        // Descartar pregunta el motivo antes; el resto cambia el estado directo
+        if (action.status === 'SKIPPED' && onSkip) return setSkipping(true)
+        onStatus(item, action.status)
+    }
 
     return (
         <li className="space-y-3 rounded-lg border bg-card p-4 text-card-foreground shadow-sm">
@@ -201,15 +259,19 @@ function QueueCard({ item, variant, onStatus }: { item: QueueItem; variant: Queu
 
             {isPending && <CoverLetterEditor item={item} />}
 
-            {actions && (
-                <div className="flex flex-wrap gap-2">
-                    {actions.map((action) => (
-                        <Button key={action.status} size="sm" variant={action.variant ?? 'default'} onClick={() => onStatus(item, action.status)}>
-                            <action.icon className="size-4" />
-                            {action.label}
-                        </Button>
-                    ))}
-                </div>
+            {skipping && onSkip ? (
+                <SkipForm onSkip={(reason, detail) => onSkip(item, reason, detail)} onCancel={() => setSkipping(false)} />
+            ) : (
+                actions && (
+                    <div className="flex flex-wrap gap-2">
+                        {actions.map((action) => (
+                            <Button key={action.status} size="sm" variant={action.variant ?? 'default'} onClick={() => act(action)}>
+                                <action.icon className="size-4" />
+                                {action.label}
+                            </Button>
+                        ))}
+                    </div>
+                )
             )}
         </li>
     )
@@ -230,7 +292,7 @@ function BulkApprove({ ready, onApproved }: { ready: QueueItem[]; onApproved: (m
             const result = await approveQueueByScore(minScore)
             if (!result.ok) return void toast.error(result.message)
             onApproved(minScore)
-            toast.success(`Aprobaste ${result.data.approved}. Las cartas se preparan en segundo plano.`)
+            toast.success(`Aprobaste ${result.data.approved}.`)
         } catch {
             toast.error('No se pudieron aprobar')
         } finally {
@@ -265,17 +327,19 @@ function QueueList({
     empty,
     variant = 'pending',
     onStatus,
+    onSkip,
 }: {
     items: QueueItem[]
     empty: string
     variant?: QueueCardVariant
     onStatus: OnStatus
+    onSkip?: OnSkip
 }) {
     if (items.length === 0) return <p className="py-6 text-sm text-muted-foreground">{empty}</p>
     return (
         <ul className="space-y-3">
             {items.map((item) => (
-                <QueueCard key={item.id} item={item} variant={variant} onStatus={onStatus} />
+                <QueueCard key={item.id} item={item} variant={variant} onStatus={onStatus} onSkip={onSkip} />
             ))}
         </ul>
     )
@@ -284,6 +348,22 @@ function QueueList({
 export function QueueBoard({ initial }: { initial: QueueData }) {
     const [pending, setPending] = useState(initial.pending)
     const [submitted, setSubmitted] = useState(initial.submitted)
+
+    const skipItem: OnSkip = async (item, reason, detail) => {
+        try {
+            const result = await skipApplication(item.id, reason, detail)
+            if (!result.ok) return void toast.error(result.message)
+            setPending((current) => current.filter((entry) => entry.id !== item.id))
+            toast.success('Descartada')
+            for (const learned of result.data.learned) {
+                toast.message(`KeyWords aprendió: ${LEARNED_LABELS[learned.kind](learned.value)}`, {
+                    description: 'Lo ves y lo podés borrar en "Búsqueda diaria de ofertas".',
+                })
+            }
+        } catch {
+            toast.error('No se pudo descartar')
+        }
+    }
 
     const changeStatus = async (item: QueueItem, status: ApplicationStatusValue) => {
         try {
@@ -332,17 +412,18 @@ export function QueueBoard({ initial }: { initial: QueueData }) {
             </TabsList>
             <TabsContent value="ready">
                 <BulkApprove ready={ready} onApproved={markApproved} />
-                <QueueList items={ready} onStatus={changeStatus} empty="No hay ofertas esperando tu aprobación." />
+                <QueueList items={ready} onStatus={changeStatus} onSkip={skipItem} empty="No hay ofertas esperando tu aprobación." />
             </TabsContent>
             <TabsContent value="approved">
                 <QueueList
                     items={approved}
                     onStatus={changeStatus}
+                    onSkip={skipItem}
                     empty='No hay ofertas aprobadas. Cargá una con "Que la complete Claude" o aprobá alguna de la cola.'
                 />
             </TabsContent>
             <TabsContent value="needs-user">
-                <QueueList items={needsUser} onStatus={changeStatus} empty="Nada trabado: Claude no necesitó ayuda." />
+                <QueueList items={needsUser} onStatus={changeStatus} onSkip={skipItem} empty="Nada trabado: Claude no necesitó ayuda." />
             </TabsContent>
             <TabsContent value="submitted">
                 <QueueList

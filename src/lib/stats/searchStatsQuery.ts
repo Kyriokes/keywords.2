@@ -9,6 +9,7 @@ import {
     rankSources,
     summarizeAnswers,
     summarizeReasons,
+    summarizeUserSkips,
     type AnswerStats,
     type CompanyRank,
     type Funnel,
@@ -16,6 +17,7 @@ import {
     type RoleRank,
     type SourceRank,
     type StatsPeriod,
+    type UserReasonCount,
 } from "./searchStats";
 
 /** Búsquedas que se muestran en el historial. */
@@ -38,7 +40,10 @@ export interface SearchStats {
     days: StatsPeriod;
     funnel: Funnel;
     sources: SourceRank[];
+    /** Por qué descartaron las ofertas los filtros automáticos. */
     reasons: ReasonCount[];
+    /** Por qué descartó el usuario, en la web o en el chat. */
+    userReasons: UserReasonCount[];
     companies: CompanyRank[];
     roles: RoleRank[];
     runs: RunSummary[];
@@ -61,7 +66,7 @@ export async function loadSearchStats(profileId: string, days: StatsPeriod, now:
         }),
         prisma.jobApplication.findMany({
             where: { profileId, date: { gte: since } },
-            select: { source: true, status: true, company: true },
+            select: { source: true, status: true, company: true, skipReason: true, skipDetail: true },
         }),
         prisma.searchRun.findMany({
             where: { profileId },
@@ -93,6 +98,7 @@ export async function loadSearchStats(profileId: string, days: StatsPeriod, now:
         funnel: buildFunnel(offers, applications),
         sources: rankSources(offers, applications, lastRunBySource),
         reasons: summarizeReasons(offers.filter((offer) => offer.decision === "REJECTED").map((offer) => offer.reason)),
+        userReasons: summarizeUserSkips(applications),
         companies: rankCompanies(offers),
         roles: rankRoles(offers),
         runs: runs.map((run) => ({

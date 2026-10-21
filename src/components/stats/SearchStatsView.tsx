@@ -56,6 +56,7 @@ export function SearchStatsView({ stats }: { stats: SearchStats }) {
     ["Entrevistas", funnel.interviews],
   ];
   const maxReason = Math.max(1, ...stats.reasons.map((reason) => reason.count));
+  const maxUserReason = Math.max(1, ...stats.userReasons.map((reason) => reason.count));
   const usedTemplates = stats.answers.templates.filter((template) => template.used > 0).slice(0, MAX_TEMPLATES);
   const originSummary = ORIGIN_PARTS.filter(([origin]) => stats.answers.byOrigin[origin])
     .map(([origin, label]) => `${stats.answers.byOrigin[origin]} ${label}`)
@@ -135,6 +136,25 @@ export function SearchStatsView({ stats }: { stats: SearchStats }) {
                 <span className="text-sm">{reason.label}</span>
                 <div className="col-span-2 row-start-2 sm:col-span-1 sm:row-start-auto">
                   <Bar share={(reason.count / maxReason) * 100} />
+                </div>
+                <span className="col-start-2 row-start-1 text-right text-sm tabular-nums sm:col-start-auto">{reason.count}</span>
+              </li>
+            ))}
+          </ul>
+        )}
+      </Section>
+
+      <Section title="Por qué descartaste vos">
+        {stats.userReasons.length === 0 ? (
+          <Empty>No descartaste ofertas en el período. Cuando descartes una, elegí el motivo: KeyWords aprende de eso.</Empty>
+        ) : (
+          <ul className="space-y-2">
+            {stats.userReasons.map((reason) => (
+              <li key={reason.label} className="grid grid-cols-[1fr_auto] items-center gap-x-3 gap-y-1 sm:grid-cols-[16rem_1fr_auto]">
+                <span className="text-sm">{reason.label}</span>
+                <div className="col-span-2 row-start-2 sm:col-span-1 sm:row-start-auto">
+                  <Bar share={(reason.count / maxUserReason) * 100} />
+                  {reason.details.length > 0 && <p className="mt-1 text-xs text-muted-foreground">{reason.details.join(" · ")}</p>}
                 </div>
                 <span className="col-start-2 row-start-1 text-right text-sm tabular-nums sm:col-start-auto">{reason.count}</span>
               </li>

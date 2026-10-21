@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { emptySourceStats } from "@/lib/ingest/stats";
 import {
-    buildFunnel, rankCompanies, rankRoles, rankSources, reasonCategory, summarizeAnswers, summarizeReasons, type ApplicationRow, type OfferRow,
+    buildFunnel, rankCompanies, rankRoles, rankSources, reasonCategory, summarizeAnswers, summarizeReasons, summarizeUserSkips, type ApplicationRow, type OfferRow,
 } from "./searchStats";
 
 const offer = (fields: Partial<OfferRow> = {}): OfferRow => ({
@@ -34,6 +34,22 @@ describe("summarizeReasons", () => {
             { label: "Solo para otro país", count: 2 },
             { label: "Pide más años de los que aceptás", count: 1 },
             { label: "Presencial", count: 1 },
+        ]);
+    });
+});
+
+describe("summarizeUserSkips", () => {
+    it("agrupa los descartes del usuario por motivo con los detalles más repetidos", () => {
+        const skipped = (skipReason: string | null, skipDetail: string | null) => application({ status: "SKIPPED", skipReason, skipDetail });
+        expect(
+            summarizeUserSkips([
+                skipped("TECH", "Go"), skipped("TECH", "go"), skipped("TECH", "PHP"), skipped("TECH", "Java"), skipped("TECH", "Elixir"),
+                skipped("LANGUAGE", "alemán"), skipped(null, null), application({ status: "APPLIED" }),
+            ])
+        ).toEqual([
+            { label: "Tecnología que no tenés", count: 5, details: ["Go ×2", "Elixir", "Java"] },
+            { label: "Pide otro idioma", count: 1, details: ["alemán"] },
+            { label: "Sin motivo", count: 1, details: [] },
         ]);
     });
 });

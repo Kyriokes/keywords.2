@@ -1,6 +1,6 @@
 import { authenticateAgent } from "@/lib/agent/auth";
 import { handleMcpMessage, type JsonRpcResponse } from "@/lib/agent/mcp";
-import { SERVER_INSTRUCTIONS, agentTools } from "@/lib/agent/tools";
+import { SERVER_INSTRUCTIONS, SERVER_VERSION, agentTools } from "@/lib/agent/tools";
 import { isRateLimited } from "@/lib/rateLimit";
 
 // Servidor MCP para agentes como Claude Code. No usa la sesión con cookie: se autentica con
@@ -9,7 +9,7 @@ import { isRateLimited } from "@/lib/rateLimit";
 const MAX_BODY_BYTES = 1_000_000;
 const RATE_LIMIT = { max: 120, windowMs: 60_000 };
 
-const SERVER_INFO = { name: "keywords", version: "0.1.0", instructions: SERVER_INSTRUCTIONS };
+const SERVER_INFO = { name: "keywords", version: SERVER_VERSION, instructions: SERVER_INSTRUCTIONS };
 
 export async function POST(request: Request) {
     const agent = await authenticateAgent(request);

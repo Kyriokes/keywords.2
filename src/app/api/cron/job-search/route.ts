@@ -1,6 +1,7 @@
 import { timingSafeEqual } from "node:crypto";
 import prisma from "@/lib/prisma";
 import { runAndRecord, type FetchCache } from "@/lib/ingest/run";
+import { SEARCH_SETTINGS_SELECT } from "@/lib/ingest/settings";
 
 // Búsqueda diaria de ofertas para todos los que la activaron. La llama el cron de Vercel
 // (vercel.json) con `Authorization: Bearer $CRON_SECRET`; es ruta pública en el proxy.
@@ -28,16 +29,7 @@ export async function GET(request: Request) {
         where: { enabled: true },
         // Los que hace más tiempo que no se buscan, primero
         orderBy: { lastRunAt: { sort: "asc", nulls: "first" } },
-        select: {
-            profileId: true,
-            sources: true,
-            atsBoards: true,
-            minScore: true,
-            maxPerRun: true,
-            workModes: true,
-            seniorityPolicy: true,
-            minRelocationSalaryUsd: true,
-        },
+        select: SEARCH_SETTINGS_SELECT,
     });
 
     const cache: FetchCache = new Map();

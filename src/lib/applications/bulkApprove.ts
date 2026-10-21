@@ -4,7 +4,7 @@ import prisma from "@/lib/prisma";
 
 /**
  * Aprueba de una vez las ofertas por aprobar (READY) del perfil cuyo match con el CV llega al mínimo.
- * Devuelve las que aprobó, de mayor a menor match, para preparar sus cartas en ese orden.
+ * Devuelve las que aprobó, de mayor a menor match.
  */
 export async function approveReadyByScore(profileId: string, minScore: number): Promise<string[]> {
     const offers = await prisma.jobApplication.findMany({

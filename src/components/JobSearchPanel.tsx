@@ -1,13 +1,14 @@
 'use client'
 
 import { useState } from 'react'
-import { FlaskConical, Loader2, Plus, Search } from 'lucide-react'
+import { FlaskConical, Loader2, Plus, Search, X } from 'lucide-react'
 import { useRouter } from 'next/navigation'
 import { toast } from 'sonner'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { Textarea } from '@/components/ui/textarea'
 import {
     previewJobSearch,
@@ -15,12 +16,120 @@ import {
     saveJobSearchSettings,
     type JobSearchSettingsData,
 } from '@/actions/job-search-actions'
+import { addPreference, removePreference } from '@/actions/preference-actions'
 import { SENIORITY_POLICIES, SENIORITY_POLICY_LABELS, WORK_MODES, WORK_MODE_LABELS } from '@/lib/ingest/eligibility'
 import type { SearchDecision } from '@/lib/ingest/run'
 import { AGGREGATOR_SOURCES, SOURCE_LABELS } from '@/lib/ingest/sources'
+import { PREFERENCE_KINDS, PREFERENCE_KIND_LABELS, isPreferenceKind, type PreferenceKind } from '@/lib/preferences/kinds'
+import type { PreferenceRow } from '@/lib/preferences/preferences'
 import { LIMITS } from '@/lib/validation'
 
 const dateTimeFormatter = new Intl.DateTimeFormat('es', { dateStyle: 'medium', timeStyle: 'short' })
+
+/** Un número opcional del formulario: vacío es null. */
+const optionalNumber = (value: string) => (value.trim() ? Number(value) : null)
+
+/** Lo que KeyWords sabe que el usuario no quiere: lo cargó él o lo aprendió de un descarte. Se puede sumar y borrar. */
+function PreferencesEditor({ initial }: { initial: PreferenceRow[] }) {
+    const [preferences, setPreferences] = useState(initial)
+    const [kind, setKind] = useState<PreferenceKind>('AVOID_TECH')
+    const [value, setValue] = useState('')
+    const [busy, setBusy] = useState(false)
+
+    const add = async () => {
+        if (!value.trim()) return
+        setBusy(true)
+        try {
+            const result = await addPreference(kind, value)
+            if (!result.ok) return void toast.error(result.message)
+            setPreferences((current) => [result.data, ...current])
+            setValue('')
+        } catch {
+            toast.error('No se pudo guardar la preferencia')
+        } finally {
+            setBusy(false)
+        }
+    }
+
+    const remove = async (preference: PreferenceRow) => {
+        try {
+            const result = await removePreference(preference.id)
+            if (!result.ok) return void toast.error(result.message)
+            setPreferences((current) => current.filter((entry) => entry.id !== preference.id))
+        } catch {
+            toast.error('No se pudo borrar la preferencia')
+        }
+    }
+
+    const groups = PREFERENCE_KINDS.map((group) => ({ kind: group, items: preferences.filter((preference) => preference.kind === group) }))
+
+    return (
+        <fieldset className="space-y-3">
+            <legend className="text-sm font-medium">Lo que KeyWords aprendió de vos</legend>
+            <p className="text-xs text-muted-foreground">
+                Cuando descartás una oferta por una tecnología o una empresa, queda acá y la búsqueda deja de traerlas. También podés
+                cargar frases que descartan una oferta, como &quot;talent pool&quot;. Tocá la ✕ para olvidarlo.
+            </p>
+            {preferences.length === 0 ? (
+                <p className="text-sm text-muted-foreground">Todavía nada. Se aprende solo de tus descartes.</p>
+            ) : (
+                groups
+                    .filter((group) => group.items.length > 0)
+                    .map((group) => (
+                        <div key={group.kind} className="space-y-1">
+                            <p className="text-xs text-muted-foreground">{PREFERENCE_KIND_LABELS[group.kind]}</p>
+                            <div className="flex flex-wrap gap-2">
+                                {group.items.map((preference) => (
+                                    <Badge
+                                        key={preference.id}
+                                        variant={preference.origin === 'LEARNED' ? 'secondary' : 'outline'}
+                                        title={preference.note ?? (preference.origin === 'LEARNED' ? 'Aprendida de un descarte' : 'La cargaste vos')}
+                                        className="gap-1 pr-1"
+                                    >
+                                        {preference.value}
+                                        <button
+                                            type="button"
+                                            onClick={() => remove(preference)}
+                                            aria-label={`Olvidar ${preference.value}`}
+                                            className="rounded-sm hover:bg-foreground/10"
+                                        >
+                                            <X className="size-3" aria-hidden />
+                                        </button>
+                                    </Badge>
+                                ))}
+                            </div>
+                        </div>
+                    ))
+            )}
+            <div className="flex flex-wrap items-center gap-2">
+                <Select value={kind} onValueChange={(next) => setKind(isPreferenceKind(next) ? next : 'AVOID_TECH')}>
+                    <SelectTrigger className="w-[200px]" aria-label="Tipo de preferencia">
+                        <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                        {PREFERENCE_KINDS.map((option) => (
+                            <SelectItem key={option} value={option}>
+                                {PREFERENCE_KIND_LABELS[option]}
+                            </SelectItem>
+                        ))}
+                    </SelectContent>
+                </Select>
+                <Input
+                    value={value}
+                    onChange={(event) => setValue(event.target.value)}
+                    onKeyDown={(event) => event.key === 'Enter' && (event.preventDefault(), add())}
+                    placeholder={kind === 'AVOID_TECH' ? 'PHP, Java, Go…' : kind === 'AVOID_COMPANY' ? 'Nombre de la empresa' : 'talent pool, always recruiting…'}
+                    maxLength={LIMITS.preferenceValue}
+                    className="w-60"
+                />
+                <Button type="button" size="sm" variant="outline" onClick={add} disabled={busy || !value.trim()}>
+                    {busy ? <Loader2 className="size-4 animate-spin" /> : <Plus className="size-4" />}
+                    Agregar
+                </Button>
+            </div>
+        </fieldset>
+    )
+}
 
 interface Preview {
     summary: string
@@ -83,6 +192,10 @@ export function JobSearchPanel({ initial }: { initial: JobSearchSettingsData }) 
     const [workModes, setWorkModes] = useState<string[]>(initial.workModes)
     const [seniorityPolicy, setSeniorityPolicy] = useState(initial.seniorityPolicy)
     const [relocationSalary, setRelocationSalary] = useState(initial.minRelocationSalaryUsd?.toString() ?? '')
+    const [autoApprove, setAutoApprove] = useState(initial.autoApproveMinScore?.toString() ?? '')
+    const [minSalaryUsd, setMinSalaryUsd] = useState(initial.minSalaryUsdMonthly?.toString() ?? '')
+    const [minSalaryArs, setMinSalaryArs] = useState(initial.minSalaryArsMonthly?.toString() ?? '')
+    const [maxPerCompany, setMaxPerCompany] = useState(initial.maxPerCompanyPerMonth)
     const [lastResult, setLastResult] = useState(initial.lastResult)
     const [lastRunAt, setLastRunAt] = useState(initial.lastRunAt)
     const [preview, setPreview] = useState<Preview | null>(null)
@@ -106,7 +219,11 @@ export function JobSearchPanel({ initial }: { initial: JobSearchSettingsData }) 
         workModes,
         seniorityPolicy,
         // Vacío = nunca aceptar mudanza
-        minRelocationSalaryUsd: relocationSalary.trim() ? Number(relocationSalary) : null,
+        minRelocationSalaryUsd: optionalNumber(relocationSalary),
+        autoApproveMinScore: optionalNumber(autoApprove),
+        minSalaryUsdMonthly: optionalNumber(minSalaryUsd),
+        minSalaryArsMonthly: optionalNumber(minSalaryArs),
+        maxPerCompanyPerMonth: maxPerCompany,
     })
 
     const save = async () => {
@@ -285,6 +402,66 @@ export function JobSearchPanel({ initial }: { initial: JobSearchSettingsData }) 
                         las que piden ciudadanía o permiso de trabajo de otro país.
                     </p>
                 </div>
+
+                <fieldset className="space-y-4">
+                    <legend className="text-sm font-medium">Reglas para postular</legend>
+                    <div className="grid gap-4 sm:grid-cols-2">
+                        <div className="space-y-2">
+                            <Label htmlFor="autoApprove">Aprobar solas desde match (%)</Label>
+                            <Input
+                                id="autoApprove"
+                                type="number"
+                                min={0}
+                                max={100}
+                                placeholder="Vacío: nunca"
+                                value={autoApprove}
+                                onChange={(event) => setAutoApprove(event.target.value)}
+                            />
+                            <p className="text-xs text-muted-foreground">
+                                Las ofertas con ese match o más, sin advertencias y con un formulario que Claude puede completar, entran directo en
+                                &quot;Aprobadas&quot;. Cada envío sigue necesitando tu sí.
+                            </p>
+                        </div>
+                        <div className="space-y-2">
+                            <Label htmlFor="maxPerCompany">Postulaciones por empresa en 30 días</Label>
+                            <Input
+                                id="maxPerCompany"
+                                type="number"
+                                min={1}
+                                max={LIMITS.maxPerCompanyPerMonth}
+                                value={maxPerCompany}
+                                onChange={(event) => setMaxPerCompany(Number(event.target.value))}
+                            />
+                            <p className="text-xs text-muted-foreground">Pasado el tope, las demás búsquedas de esa empresa se descartan.</p>
+                        </div>
+                        <div className="space-y-2">
+                            <Label htmlFor="minSalaryUsd">Sueldo mínimo (USD por mes)</Label>
+                            <Input
+                                id="minSalaryUsd"
+                                type="number"
+                                min={0}
+                                placeholder="Vacío: no mirar el sueldo"
+                                value={minSalaryUsd}
+                                onChange={(event) => setMinSalaryUsd(event.target.value)}
+                            />
+                            <p className="text-xs text-muted-foreground">Una oferta que publica menos se descarta.</p>
+                        </div>
+                        <div className="space-y-2">
+                            <Label htmlFor="minSalaryArs">Sueldo mínimo en pesos (ARS por mes)</Label>
+                            <Input
+                                id="minSalaryArs"
+                                type="number"
+                                min={0}
+                                placeholder="Para ofertas locales"
+                                value={minSalaryArs}
+                                onChange={(event) => setMinSalaryArs(event.target.value)}
+                            />
+                            <p className="text-xs text-muted-foreground">Lo usa Claude cuando una oferta local publica el sueldo.</p>
+                        </div>
+                    </div>
+                </fieldset>
+
+                <PreferencesEditor initial={initial.preferences} />
 
                 {lastResult && (
                     <p className="rounded-md bg-muted px-3 py-2 text-sm">

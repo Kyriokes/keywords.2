@@ -4,9 +4,10 @@ import { auth } from "@/auth"
 import prisma from "@/lib/prisma"
 import { revalidatePath } from "next/cache"
 import { suggestAtsBoards, type BoardSuggestion } from "@/lib/ingest/boards"
-import { DEFAULT_WORK_MODES } from "@/lib/ingest/eligibility"
 import { runJobSearch, runSavedSearch, type SearchDecision } from "@/lib/ingest/run"
+import { loadSearchSettings } from "@/lib/ingest/settings"
 import { AGGREGATOR_SOURCES, parseAtsBoard } from "@/lib/ingest/sources"
+import { listPreferences, type PreferenceRow } from "@/lib/preferences/preferences"
 import { isRateLimited } from "@/lib/rateLimit"
 import { LIMITS, firstIssueMessage, jobSearchSettingsSchema, type ActionResult } from "@/lib/validation"
 
@@ -20,10 +21,20 @@ export interface JobSearchSettingsData {
   seniorityPolicy: string
   /** Sueldo (USD por mes) que tiene que superar una oferta para aceptar mudarse; null = nunca. */
   minRelocationSalaryUsd: number | null
+  /** Match desde el que una oferta sin advertencias y con formulario externo entra aprobada; null = nunca. */
+  autoApproveMinScore: number | null
+  /** Sueldo mínimo publicado (USD por mes) para no descartar la oferta; null = no mirar el sueldo. */
+  minSalaryUsdMonthly: number | null
+  /** Sueldo mínimo en pesos para ofertas locales; lo usa Claude, no el filtro. */
+  minSalaryArsMonthly: number | null
+  /** Postulaciones a la misma empresa en 30 días. */
+  maxPerCompanyPerMonth: number
   lastRunAt: string | null
   lastResult: string | null
   /** Empresas que aparecen en los links de las ofertas y todavía no se siguen. */
   suggestedBoards: BoardSuggestion[]
+  /** Tecnologías y empresas a evitar y frases que descartan: lo que cargó el usuario y lo aprendido de sus descartes. */
+  preferences: PreferenceRow[]
 }
 
 // Ofertas recientes que se miran para sugerir empresas
@@ -31,23 +42,23 @@ const SUGGESTION_SAMPLE = 1_000
 
 type EditableSettings = Pick<
   JobSearchSettingsData,
-  "enabled" | "sources" | "atsBoards" | "minScore" | "maxPerRun" | "workModes" | "seniorityPolicy" | "minRelocationSalaryUsd"
+  | "enabled"
+  | "sources"
+  | "atsBoards"
+  | "minScore"
+  | "maxPerRun"
+  | "workModes"
+  | "seniorityPolicy"
+  | "minRelocationSalaryUsd"
+  | "autoApproveMinScore"
+  | "minSalaryUsdMonthly"
+  | "minSalaryArsMonthly"
+  | "maxPerCompanyPerMonth"
 >
 
 // Probar filtros consulta las mismas APIs pero no guarda nada: unas pocas veces cada 10 minutos
 const PREVIEW_MAX = 5
 const PREVIEW_WINDOW_MS = 10 * 60 * 1000
-
-const DEFAULTS = {
-  enabled: false,
-  sources: [...AGGREGATOR_SOURCES],
-  atsBoards: [] as string[],
-  minScore: 40,
-  maxPerRun: 40,
-  workModes: [...DEFAULT_WORK_MODES] as string[],
-  seniorityPolicy: "FLEXIBLE",
-  minRelocationSalaryUsd: null as number | null
-}
 
 async function requireProfileId(): Promise<string> {
   const session = await auth()
@@ -89,8 +100,9 @@ function parseSettings(data: EditableSettings): ActionResult<EditableSettings> {
 
 export async function getJobSearchSettings(): Promise<JobSearchSettingsData> {
   const profileId = await requireProfileId()
-  const [settings, offers] = await Promise.all([
-    prisma.jobSearchSettings.findUnique({ where: { profileId } }),
+  const [settings, preferences, offers] = await Promise.all([
+    loadSearchSettings(profileId),
+    listPreferences(profileId),
     // Las más recientes alcanzan para ver de qué empresas vienen las ofertas; las descartadas no cuentan
     prisma.jobApplication.findMany({
       where: { profileId, status: { not: "SKIPPED" } },
@@ -99,23 +111,16 @@ export async function getJobSearchSettings(): Promise<JobSearchSettingsData> {
       select: { link: true, applyUrl: true }
     })
   ])
-  const suggestedBoards = suggestAtsBoards(
-    offers.map((offer) => [offer.link, offer.applyUrl]),
-    settings?.atsBoards ?? []
-  )
-  if (!settings) return { ...DEFAULTS, lastRunAt: null, lastResult: null, suggestedBoards }
+  const { exists: _exists, lastRunAt, ...editable } = settings
+  void _exists
   return {
-    enabled: settings.enabled,
-    sources: settings.sources,
-    atsBoards: settings.atsBoards,
-    minScore: settings.minScore,
-    maxPerRun: settings.maxPerRun,
-    workModes: settings.workModes,
-    seniorityPolicy: settings.seniorityPolicy,
-    minRelocationSalaryUsd: settings.minRelocationSalaryUsd,
-    lastRunAt: settings.lastRunAt?.toISOString() ?? null,
-    lastResult: settings.lastResult,
-    suggestedBoards
+    ...editable,
+    lastRunAt: lastRunAt?.toISOString() ?? null,
+    suggestedBoards: suggestAtsBoards(
+      offers.map((offer) => [offer.link, offer.applyUrl]),
+      settings.atsBoards
+    ),
+    preferences
   }
 }
 

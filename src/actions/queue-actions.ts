@@ -3,11 +3,11 @@
 import { auth } from "@/auth"
 import prisma from "@/lib/prisma"
 import { revalidatePath } from "next/cache"
-import { after } from "next/server"
 import { approveReadyByScore } from "@/lib/applications/bulkApprove"
 import { generateCoverLetterForApplication } from "@/lib/applications/coverLetter"
-import { prepareCoverLetters } from "@/lib/applications/coverLetterBatch"
-import { LIMITS, type ActionResult } from "@/lib/validation"
+import { skipApplications, type Learned } from "@/lib/applications/skip"
+import type { SkipReason } from "@/lib/applications/skipReasons"
+import { LIMITS, skipReasonSchema, type ActionResult } from "@/lib/validation"
 
 /** Estados que se ven en la cola de postulaciones asistidas. */
 const QUEUE_STATUSES = ["READY", "APPROVED", "NEEDS_USER"] as const
@@ -49,8 +49,8 @@ async function requireProfileId(): Promise<string> {
 }
 
 /**
- * Aprueba de una vez las ofertas por aprobar con match igual o mayor a `minScore`. Las cartas se
- * preparan después de responder, de mayor a menor match, hasta donde alcance el tiempo.
+ * Aprueba de una vez las ofertas por aprobar con match igual o mayor a `minScore`. La carta de cada
+ * una se genera recién cuando el formulario la pide (o a mano desde la tarjeta).
  */
 export async function approveQueueByScore(minScore: number): Promise<ActionResult<{ approved: number }>> {
   const profileId = await requireProfileId()
@@ -59,9 +59,28 @@ export async function approveQueueByScore(minScore: number): Promise<ActionResul
   }
 
   const ids = await approveReadyByScore(profileId, minScore)
-  if (ids.length) after(() => prepareCoverLetters(profileId, ids).then(() => undefined))
   revalidatePath("/user/queue")
   return { ok: true, data: { approved: ids.length } }
+}
+
+/**
+ * Descarta una oferta de la cola guardando por qué. Un descarte por tecnología o por empresa queda
+ * como preferencia y la búsqueda deja de traer esas ofertas; `learned` dice qué se aprendió.
+ */
+export async function skipApplication(
+  id: string,
+  reason?: SkipReason,
+  detail?: string
+): Promise<ActionResult<{ learned: Learned[] }>> {
+  const profileId = await requireProfileId()
+  const parsed = skipReasonSchema.safeParse({ reason, detail })
+  if (!parsed.success) return { ok: false, code: "INVALID_INPUT", message: "El motivo del descarte no es válido." }
+
+  const result = await skipApplications(profileId, [{ id, ...parsed.data }], QUEUE_STATUSES)
+  if (result.skipped.length === 0) return { ok: false, code: "NOT_FOUND", message: "La oferta ya no está en la cola." }
+  revalidatePath("/user/queue")
+  revalidatePath("/user/dashboard")
+  return { ok: true, data: { learned: result.learned } }
 }
 
 /** Genera (o regenera) con la IA el borrador de la carta de una oferta. */

@@ -3,7 +3,6 @@
 import { auth } from "@/auth"
 import prisma from "@/lib/prisma"
 import { revalidatePath } from "next/cache"
-import { after } from "next/server"
 import { providerManager } from "@/lib/ia/providerManager"
 import { keywordName } from "@/lib/keywords/dictionary"
 import {
@@ -11,7 +10,6 @@ import {
   createApplicationForProfile,
   type ApplicationWithRelations,
 } from "@/lib/applications/create"
-import { generateCoverLetterForApplication } from "@/lib/applications/coverLetter"
 import { parseApplicationStatus, type ActionResult } from "@/lib/validation"
 
 export interface CreateApplicationData {
@@ -29,14 +27,6 @@ export interface CreateApplicationData {
   company?: string
   applyUrl?: string
   applyMode?: string
-}
-
-// Al aprobar una oferta se prepara el borrador de la carta, sin hacer esperar al usuario
-function prepareInBackground(profileId: string, applicationId: string) {
-  after(async () => {
-    const result = await generateCoverLetterForApplication(profileId, applicationId)
-    if (!result.ok) console.warn(`Cover letter not prepared for ${applicationId}: ${result.code}`)
-  })
 }
 
 // Formato que espera el store del cliente
@@ -86,8 +76,6 @@ export async function createApplication(
     // Fire and forget
     providerManager.recordFeedback(profile.id, provider, 'accepted').catch(console.error)
   }
-
-  if (application.status === "APPROVED") prepareInBackground(profile.id, application.id)
 
   revalidatePath('/user/dashboard')
 
@@ -184,8 +172,6 @@ export async function updateApplicationStatus(id: string, status: string) {
       where: { id },
       data: { status }
     })
-
-    if (status === "APPROVED" && app.status !== "APPROVED") prepareInBackground(profile.id, id)
 
     revalidatePath('/user/dashboard')
 

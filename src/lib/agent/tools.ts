@@ -1,12 +1,18 @@
 import "server-only";
 
-import { after } from "next/server";
 import { z } from "zod";
 import prisma from "@/lib/prisma";
-import { prepareCoverLetters } from "@/lib/applications/coverLetterBatch";
+import { applyModeForUrl } from "@/lib/applications/applyMode";
+import { latestAdaptedByTemplate } from "@/lib/applications/answers";
+import { generateCoverLetterForApplication } from "@/lib/applications/coverLetter";
 import { createApplicationForProfile } from "@/lib/applications/create";
+import { appendNote } from "@/lib/applications/notes";
+import { skipApplications } from "@/lib/applications/skip";
+import { SKIP_REASONS } from "@/lib/applications/skipReasons";
 import { WRITING_GUIDE } from "@/lib/applications/voice";
 import { runSavedSearch } from "@/lib/ingest/run";
+import { loadSearchSettings, updateSearchRules } from "@/lib/ingest/settings";
+import { deletePreference, listPreferences, savePreference } from "@/lib/preferences/preferences";
 import { getDesiredRolesForProfile, saveDesiredRoles } from "@/lib/positions/save";
 import { loadSearchStats } from "@/lib/stats/searchStatsQuery";
 import {
@@ -16,7 +22,9 @@ import {
     APPLY_MODES,
     LIMITS,
     normalizeLink,
+    preferenceSchema,
     sanitizeKeywords,
+    searchRulesSchema,
 } from "@/lib/validation";
 import type { AgentContext } from "./auth";
 import { ToolError, defineTool, type McpTool } from "./mcp";
@@ -24,12 +32,23 @@ import { ToolError, defineTool, type McpTool } from "./mcp";
 // La descripción completa puede ser larga; al agente le alcanza con el comienzo para completar el formulario
 const DESCRIPTION_PREVIEW = 12_000;
 
-export const SERVER_INSTRUCTIONS = `KeyWords guarda las ofertas y postulaciones del usuario.
-Flujo: get_candidate y list_answer_templates una vez por sesión; search_now para traer ofertas nuevas; get_queue (status READY) para que el usuario elija en el chat y review_offers con lo que decida; después get_queue (status APPROVED) y para cada oferta get_application.
+/** Sube cuando cambian las herramientas: la skill lo compara para avisar que hay que reconectar el MCP. */
+export const SERVER_VERSION = "0.2.0";
+
+/** Estados desde los que el usuario puede aprobar o descartar una oferta. */
+const REVIEWABLE_STATUSES = ["READY", "APPROVED", "NEEDS_USER"] as const;
+
+/** Respuestas adaptadas que se miran para encontrar la última de cada plantilla. */
+const ADAPTED_SAMPLE = 200;
+
+export const SERVER_INSTRUCTIONS = `KeyWords guarda las ofertas y postulaciones del usuario, y sus criterios de búsqueda.
+Flujo: get_candidate, list_answer_templates y get_preferences una vez por sesión (las reglas y preferencias son del usuario: no se las preguntes); search_now para traer ofertas nuevas; get_queue (status READY) para que el usuario elija en el chat y review_offers con lo que decida; después get_queue (status APPROVED, applyMode EXTERNAL_FORM) y para cada oferta get_application.
+Descartes: si el usuario dice por qué descarta ("es PHP", "piden alemán", "otra vez esa empresa"), mandá reason y detail en review_offers o record_result. KeyWords aprende de los descartes por tecnología y por empresa (learned) y deja de traer esas ofertas; contáselo al usuario en una línea. Si el usuario dice una preferencia o una regla en el chat, guardala con save_preference o set_search_rules después de confirmarla.
 Reglas: nunca envíes un formulario sin que el usuario lo confirme en el chat; no postules en LinkedIn ni en Indeed; no crees cuentas ni escribas contraseñas.
+Carta: pedila con prepare_cover_letter solo si el formulario tiene campo de carta o de mensaje.
 Al terminar cada oferta llamá a record_result con lo que respondiste: APPLIED si se envió, NEEDS_USER si apareció un login, CAPTCHA o una pregunta que el usuario tiene que responder, SKIPPED si el usuario la descartó.
 Cuando el usuario responda una pregunta nueva, guardala con save_answer_template.
-Respuestas: las plantillas con mode VERBATIM se copian tal cual; las ADAPT se reescriben para la oferta con el writingGuide de get_candidate. En record_result indicá el origin de cada respuesta.
+Respuestas: las plantillas con mode VERBATIM se copian tal cual; las ADAPT se reescriben para la oferta con el writingGuide de get_candidate. En record_result indicá el origin de cada respuesta; elegir la opción de un desplegable según la plantilla cuenta como TEMPLATE.
 Para la revisión semanal usá get_search_stats.`;
 
 async function findOwnedApplication(ctx: AgentContext, id: string) {
@@ -78,6 +97,7 @@ const getCandidate = defineTool({
             mediaAssets,
             coverLetterTemplates,
             writingGuide: WRITING_GUIDE,
+            serverVersion: SERVER_VERSION,
         };
     },
 });
@@ -85,14 +105,15 @@ const getCandidate = defineTool({
 const getQueue = defineTool({
     name: "get_queue",
     description:
-        "Lista las ofertas de la cola. Por defecto las APPROVED (el usuario ya aprobó postular). applyMode EXTERNAL_FORM es un formulario que podés completar; EASY_APPLY_MANUAL lo envía el usuario.",
+        "Lista las ofertas de la cola. Por defecto las APPROVED (el usuario ya aprobó postular). applyMode filtra: EXTERNAL_FORM son formularios que podés completar (usalo para la tanda de postulaciones); UNSUPPORTED y EASY_APPLY_MANUAL las envía el usuario (listalas en el cierre).",
     input: z.object({
         status: z.enum(APPLICATION_STATUSES).default("APPROVED"),
+        applyMode: z.enum(APPLY_MODES).optional(),
         limit: z.number().int().min(1).max(50).default(10),
     }),
     run: async (ctx: AgentContext, input) => {
         const items = await prisma.jobApplication.findMany({
-            where: { profileId: ctx.profileId, status: input.status },
+            where: { profileId: ctx.profileId, status: input.status, ...(input.applyMode ? { applyMode: input.applyMode } : {}) },
             orderBy: [{ score: { sort: "desc", nulls: "last" } }, { date: "asc" }],
             take: input.limit,
             select: {
@@ -180,17 +201,18 @@ const listAnswerTemplates = defineTool({
         const [uses, adapted] = ids.length
             ? await Promise.all([
                   prisma.applicationAnswer.groupBy({ by: ["templateId"], where: { templateId: { in: ids } }, _count: { _all: true } }),
-                  // La última versión adaptada de cada plantilla, para no contradecir lo que ya se envió
+                  // La última versión adaptada de cada plantilla, para no contradecir lo que ya se envió.
+                  // Se saltean las que son solo una opción elegida de una lista ("Yes", "Other").
                   prisma.applicationAnswer.findMany({
                       where: { templateId: { in: ids }, origin: "ADAPTED" },
                       orderBy: { createdAt: "desc" },
-                      distinct: ["templateId"],
+                      take: ADAPTED_SAMPLE,
                       select: { templateId: true, answer: true },
                   }),
               ])
             : [[], []];
         const usedCount = new Map(uses.map((use) => [use.templateId, use._count._all]));
-        const lastAdapted = new Map(adapted.map((answer) => [answer.templateId, answer.answer]));
+        const lastAdapted = latestAdaptedByTemplate(adapted);
 
         return {
             count: templates.length,
@@ -251,7 +273,7 @@ const saveAnswerTemplate = defineTool({
 const addOffer = defineTool({
     name: "add_offer",
     description:
-        "Carga una oferta en KeyWords. Por defecto queda en la cola (READY) para que el usuario la apruebe. link es la publicación; applyUrl el formulario externo si es otro.",
+        "Carga una oferta en KeyWords. Por defecto queda en la cola (READY) para que el usuario la apruebe. link es la publicación; applyUrl el formulario externo si es otro. Si el formulario está en un portal que pide cuenta o no se puede automatizar (Workday, Computrabajo, Bumeran, LinkedIn, Indeed, EmpleosIT, JobLeads), queda UNSUPPORTED aunque mandes otro applyMode.",
     input: z.object({
         jobTitle: z.string().trim().min(1).max(LIMITS.title),
         jobDescription: z.string().max(LIMITS.jobDescription),
@@ -264,24 +286,31 @@ const addOffer = defineTool({
         notes: z.string().max(LIMITS.notes).optional(),
     }),
     run: async (ctx: AgentContext, input) => {
+        // El dominio del formulario manda: así Indeed o Computrabajo no entran como formularios de Claude
+        const formUrl = input.applyUrl?.trim() || input.link?.trim();
+        const hostMode = formUrl ? applyModeForUrl(formUrl) : null;
+        const applyMode = hostMode === "UNSUPPORTED" ? "UNSUPPORTED" : input.applyMode ?? "EXTERNAL_FORM";
         const result = await createApplicationForProfile(ctx.profileId, {
             ...input,
+            applyMode,
             source: input.source ?? "agent",
             detectedWords: [],
         });
         if (!result.ok) throw new ToolError(result.message);
         const { application } = result.data;
-        return { id: application.id, status: application.status, jobTitle: application.jobTitle };
+        return { id: application.id, status: application.status, applyMode: application.applyMode, jobTitle: application.jobTitle };
     },
 });
 
 const recordResult = defineTool({
     name: "record_result",
     description:
-        "Registra el resultado de una postulación: estado final, las preguntas del formulario con lo que se respondió, la carta enviada y, si se adaptó el CV, la versión usada. Reemplaza las respuestas guardadas antes para esa oferta. formUrl es el link del formulario donde se completó, si es distinto del applyUrl (por ejemplo, al seguir el botón de un portal hasta el sitio de la empresa). origin dice de dónde salió cada respuesta: TEMPLATE (plantilla tal cual), ADAPTED (plantilla reescrita), NEW (la dio el usuario en el chat), AGENT (la escribiste desde el CV).",
+        "Registra el resultado de una postulación: estado final, las preguntas del formulario con lo que se respondió, la carta enviada y, si se adaptó el CV, la versión usada. Reemplaza las respuestas guardadas antes para esa oferta; las notas se suman a las que ya tenía. formUrl es el link del formulario donde se completó, si es distinto del applyUrl (por ejemplo, al seguir el botón de un portal hasta el sitio de la empresa). origin dice de dónde salió cada respuesta: TEMPLATE (plantilla tal cual o una opción elegida según ella), ADAPTED (plantilla reescrita), NEW (la dio el usuario en el chat), AGENT (la escribiste desde el CV). Con SKIPPED, reason y detail dicen por qué (TECH + 'Go', LANGUAGE + 'alemán', COMPANY…): KeyWords aprende de los descartes por tecnología y empresa.",
     input: z.object({
         id: z.string().min(1),
         status: z.enum(["APPLIED", "NEEDS_USER", "SKIPPED"]),
+        reason: z.enum(SKIP_REASONS).optional(),
+        detail: z.string().trim().max(LIMITS.skipDetail).optional(),
         answers: z
             .array(
                 z.object({
@@ -350,7 +379,8 @@ const recordResult = defineTool({
                 data: {
                     status: input.status,
                     ...(input.status === "APPLIED" ? { appliedAt: new Date() } : {}),
-                    ...(input.notes !== undefined ? { notes: input.notes || null } : {}),
+                    // El resumen del ingreso se conserva; lo que pasó al postular va debajo
+                    ...(input.notes ? { notes: appendNote(application.notes, input.notes) } : {}),
                     // El formulario real permite sugerir seguir a esa empresa en su ATS
                     ...(input.formUrl ? { applyUrl: input.formUrl } : {}),
                     ...(variant ? { cvVariantId: variant.id } : {}),
@@ -379,7 +409,13 @@ const recordResult = defineTool({
             }
         });
 
-        return { id: application.id, status: input.status, answersSaved: input.answers?.length ?? 0 };
+        // Un descarte guarda su motivo y, si fue por tecnología o empresa, KeyWords lo aprende
+        const { learned } =
+            input.status === "SKIPPED"
+                ? await skipApplications(ctx.profileId, [{ id: application.id, reason: input.reason, detail: input.detail }], ["SKIPPED"])
+                : { learned: [] };
+
+        return { id: application.id, status: input.status, answersSaved: input.answers?.length ?? 0, learned };
     },
 });
 
@@ -405,43 +441,124 @@ const setDesiredPositions = defineTool({
     },
 });
 
+// Un descarte puede ser solo el id (como antes) o el id con su motivo
+const skipItemSchema = z.union([
+    z.string().min(1),
+    z.object({
+        id: z.string().min(1),
+        reason: z.enum(SKIP_REASONS).optional(),
+        detail: z.string().trim().max(LIMITS.skipDetail).optional(),
+    }),
+]);
+
 const reviewOffers = defineTool({
     name: "review_offers",
     description:
-        "Aprueba o descarta ofertas de la cola según lo que el usuario decidió en el chat (por ejemplo \"aprobá 1, 3 y 5-9\"). Solo cambia ofertas READY, APPROVED o NEEDS_USER. Al aprobar, KeyWords prepara la carta de presentación en segundo plano.",
+        "Aprueba o descarta ofertas de la cola según lo que el usuario decidió en el chat (por ejemplo \"aprobá 1, 3 y 5-9\"). Solo cambia ofertas READY, APPROVED o NEEDS_USER. En skip podés mandar el id solo o { id, reason, detail } cuando el usuario dijo por qué (TECH + 'PHP', LANGUAGE + 'alemán', COMPANY, LOCATION, NOT_A_JOB, SENIORITY, SALARY, DUPLICATE, CLOSED, OTHER). Los descartes por tecnología y por empresa quedan como preferencia (learned) y la búsqueda deja de traer esas ofertas: contáselo al usuario.",
     input: z.object({
         approve: z.array(z.string().min(1)).max(50).default([]),
-        skip: z.array(z.string().min(1)).max(50).default([]),
+        skip: z.array(skipItemSchema).max(50).default([]),
     }),
     run: async (ctx: AgentContext, input) => {
-        const skip = input.skip.filter((id) => !input.approve.includes(id));
-        const requested = [...input.approve, ...skip];
+        const skips = input.skip
+            .map((item) => (typeof item === "string" ? { id: item } : item))
+            .filter((item) => !input.approve.includes(item.id));
+        const requested = [...input.approve, ...skips.map((item) => item.id)];
         if (requested.length === 0) throw new ToolError("Indicá al menos una oferta para aprobar o descartar.");
 
         const found = await prisma.jobApplication.findMany({
-            where: { id: { in: requested }, profileId: ctx.profileId, status: { in: ["READY", "APPROVED", "NEEDS_USER"] } },
+            where: { id: { in: requested }, profileId: ctx.profileId, status: { in: [...REVIEWABLE_STATUSES] } },
             select: { id: true, status: true },
         });
         const statusById = new Map(found.map((app) => [app.id, app.status]));
         const toApprove = input.approve.filter((id) => statusById.has(id));
-        const toSkip = skip.filter((id) => statusById.has(id));
+        const toSkip = skips.filter((item) => statusById.has(item.id));
 
         if (toApprove.length) {
             await prisma.jobApplication.updateMany({ where: { id: { in: toApprove }, profileId: ctx.profileId }, data: { status: "APPROVED" } });
         }
-        if (toSkip.length) {
-            await prisma.jobApplication.updateMany({ where: { id: { in: toSkip }, profileId: ctx.profileId }, data: { status: "SKIPPED" } });
-        }
-
-        // Igual que al aprobar desde la app: la carta se prepara sin hacer esperar la respuesta
-        const newlyApproved = toApprove.filter((id) => statusById.get(id) !== "APPROVED");
-        if (newlyApproved.length) after(() => prepareCoverLetters(ctx.profileId, newlyApproved).then(() => undefined));
+        const { skipped, learned } = toSkip.length
+            ? await skipApplications(ctx.profileId, toSkip, REVIEWABLE_STATUSES)
+            : { skipped: [], learned: [] };
 
         return {
             approved: toApprove.length,
-            skipped: toSkip.length,
+            skipped: skipped.length,
+            learned,
             notFound: requested.filter((id) => !statusById.has(id)),
         };
+    },
+});
+
+const getPreferences = defineTool({
+    name: "get_preferences",
+    description:
+        "Reglas de la búsqueda del usuario (modalidades, nivel, match mínimo, auto-aprobación, sueldo mínimo en USD y en ARS, tope de postulaciones por empresa) y sus preferencias: tecnologías y empresas a evitar y frases que descartan una oferta, cargadas por él o aprendidas de sus descartes (origin LEARNED). Leelas al empezar la sesión: son sus criterios, no se los preguntes.",
+    input: z.object({}),
+    run: async (ctx: AgentContext) => {
+        const [settings, preferences] = await Promise.all([loadSearchSettings(ctx.profileId), listPreferences(ctx.profileId)]);
+        return {
+            rules: {
+                workModes: settings.workModes,
+                seniorityPolicy: settings.seniorityPolicy,
+                minScore: settings.minScore,
+                minRelocationSalaryUsd: settings.minRelocationSalaryUsd,
+                autoApproveMinScore: settings.autoApproveMinScore,
+                minSalaryUsdMonthly: settings.minSalaryUsdMonthly,
+                minSalaryArsMonthly: settings.minSalaryArsMonthly,
+                maxPerCompanyPerMonth: settings.maxPerCompanyPerMonth,
+            },
+            preferences,
+        };
+    },
+});
+
+const savePreferenceTool = defineTool({
+    name: "save_preference",
+    description:
+        "Guarda algo que el usuario no quiere: AVOID_TECH (una tecnología, como 'PHP'), AVOID_COMPANY (una empresa) o AVOID_PHRASE (una frase que, si aparece en la oferta, la descarta, como 'talent pool'). La búsqueda deja de traer esas ofertas. Confirmá con el usuario antes de guardar.",
+    input: preferenceSchema,
+    run: async (ctx: AgentContext, input) => {
+        const result = await savePreference(ctx.profileId, { ...input, origin: "USER" });
+        if (!result.ok) throw new ToolError(result.message);
+        return result.data;
+    },
+});
+
+const deletePreferenceTool = defineTool({
+    name: "delete_preference",
+    description: "Borra una preferencia (id de get_preferences), por ejemplo cuando KeyWords aprendió algo que el usuario no quería.",
+    input: z.object({ id: z.string().min(1) }),
+    run: async (ctx: AgentContext, input) => {
+        const deleted = await deletePreference(ctx.profileId, input.id);
+        if (!deleted) throw new ToolError("No existe una preferencia con ese id en tu cuenta.");
+        return { deleted: true };
+    },
+});
+
+const setSearchRules = defineTool({
+    name: "set_search_rules",
+    description:
+        "Cambia reglas de la búsqueda: autoApproveMinScore (match desde el que una oferta sin advertencias y con formulario externo entra aprobada sin pasar por la cola; null = nunca), minSalaryUsdMonthly (una oferta que publica menos se descarta; null = no mirar el sueldo), minSalaryArsMonthly (referencia para ofertas locales) y maxPerCompanyPerMonth (postulaciones a la misma empresa en 30 días). Solo se guarda lo que viene. Confirmá los valores con el usuario antes.",
+    input: searchRulesSchema,
+    run: async (ctx: AgentContext, input) => {
+        if (Object.values(input).every((value) => value === undefined)) throw new ToolError("Indicá al menos una regla para cambiar.");
+        return updateSearchRules(ctx.profileId, input);
+    },
+});
+
+const prepareCoverLetter = defineTool({
+    name: "prepare_cover_letter",
+    description:
+        "Genera con la IA de KeyWords la carta de presentación de una oferta (en el idioma de la oferta, con los datos del CV) y la deja guardada. Llamala solo cuando el formulario tiene un campo de carta o de mensaje. Si la oferta ya tiene carta, la devuelve sin regenerar.",
+    input: z.object({ id: z.string().min(1) }),
+    run: async (ctx: AgentContext, input) => {
+        await findOwnedApplication(ctx, input.id);
+        const existing = await prisma.coverLetter.findUnique({ where: { applicationId: input.id }, select: { text: true } });
+        if (existing) return { text: existing.text, generated: false };
+        const result = await generateCoverLetterForApplication(ctx.profileId, input.id);
+        if (!result.ok) throw new ToolError(result.message);
+        return { text: result.data.text, generated: true };
     },
 });
 
@@ -478,4 +595,9 @@ export const agentTools: McpTool<AgentContext>[] = [
     searchNow,
     reviewOffers,
     getSearchStats,
+    getPreferences,
+    savePreferenceTool,
+    deletePreferenceTool,
+    setSearchRules,
+    prepareCoverLetter,
 ];

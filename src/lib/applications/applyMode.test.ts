@@ -20,6 +20,13 @@ describe("applyModeForUrl", () => {
         expect(applyModeForUrl("https://ar.indeed.com/viewjob?jk=1")).toBe("UNSUPPORTED");
     });
 
+    it("marca como manuales los portales con CAPTCHA, cuenta obligatoria o suscripción paga", () => {
+        expect(applyModeForUrl("https://www.empleosit.com.ar/apply-now/?listing_id=108655")).toBe("UNSUPPORTED");
+        expect(applyModeForUrl("https://www.jobleads.com/register/ar/74/abc")).toBe("UNSUPPORTED");
+        expect(applyModeForUrl("https://click.appcast.io/track/abc")).toBe("UNSUPPORTED");
+        expect(applyModeForUrl("https://remoteOK.com/remote-jobs/remote-dev-1137415")).toBe("UNSUPPORTED");
+    });
+
     it("no se confunde con dominios que solo contienen el nombre", () => {
         expect(applyModeForUrl("https://notlinkedin.com.example.org/jobs/1")).toBe("EXTERNAL_FORM");
     });

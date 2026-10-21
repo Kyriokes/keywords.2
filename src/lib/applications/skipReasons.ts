@@ -32,8 +32,8 @@ export function isSkipReason(value: unknown): value is SkipReason {
     return typeof value === "string" && Object.hasOwn(SKIP_REASON_LABELS, value);
 }
 
-/** Línea que queda en las notas de la oferta: "Descartada: Tecnología que no tenés (Go)". */
+/** Línea que queda en las notas de la oferta: "Descartada: Tecnología que no tenés (Go)"; sin motivo, "Descartada". */
 export function skipNote(reason: SkipReason | undefined, detail: string | undefined): string {
-    const label = SKIP_REASON_LABELS[reason ?? "OTHER"];
-    return detail?.trim() ? `Descartada: ${label} (${detail.trim()})` : `Descartada: ${label}`;
+    const label = reason ? `Descartada: ${SKIP_REASON_LABELS[reason]}` : "Descartada";
+    return detail?.trim() ? `${label} (${detail.trim()})` : label;
 }

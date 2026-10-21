@@ -1,8 +1,9 @@
 import type { ApplyMode } from "@/lib/validation";
 
 /**
- * Portales donde el agente no puede postular: piden crear una cuenta (Workday, HiringRoom...)
- * o sus condiciones no permiten automatizar (LinkedIn, Indeed). Esas ofertas las envía el usuario.
+ * Portales donde el agente no puede postular: piden crear una cuenta (Workday, HiringRoom, JobLeads...),
+ * tienen CAPTCHA (EmpleosIT), cobran por abrir el link (Remote OK) o sus condiciones no permiten
+ * automatizar (LinkedIn, Indeed). Esas ofertas las envía el usuario.
  */
 const MANUAL_DOMAINS = [
     "myworkdayjobs.com",
@@ -17,6 +18,10 @@ const MANUAL_DOMAINS = [
     "oraclecloud.com",
     "linkedin.com",
     "indeed.com",
+    "empleosit.com.ar",
+    "jobleads.com",
+    "appcast.io",
+    "remoteok.com",
 ];
 
 /** Quién envía la postulación según el dominio del formulario. */
