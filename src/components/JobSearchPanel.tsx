@@ -166,6 +166,7 @@ function PreviewResults({ preview }: { preview: Preview }) {
                                             {[decision.company, decision.location].filter(Boolean).join(' · ')}
                                         </span>
                                         {decision.score !== null && <Badge variant="outline">match {decision.score}%</Badge>}
+                                        {decision.autoApproved && <Badge>entra aprobada</Badge>}
                                         {decision.summary && <span className="text-xs text-muted-foreground">{decision.summary}</span>}
                                         {decision.reason && (
                                             <Badge variant="secondary" className="basis-full sm:basis-auto">

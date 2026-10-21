@@ -1,10 +1,13 @@
 /**
  * Fuentes de ofertas con API pública. Cada una convierte su respuesta a `IngestedJob`.
  * Los parsers son puros (se testean con respuestas reales); `fetchSource` hace los pedidos.
- * Solo se usan APIs abiertas que los portales ofrecen para esto: nada de scraping.
+ * Se usan las APIs abiertas que los portales ofrecen para esto. La excepción es Computrabajo, que no
+ * tiene API: se leen sus páginas públicas de resultados, pocas por búsqueda (ver ./computrabajo.ts).
  */
 
 import type { Seniority } from "@/lib/positions/rules";
+import { fetchComputrabajo } from "./computrabajo";
+import { htmlToText } from "./html";
 
 export interface IngestedJob {
     source: string;
@@ -28,9 +31,9 @@ export interface IngestedJob {
 }
 
 /** Portales que agregan ofertas de muchas empresas: se consultan una vez por búsqueda. */
-export const AGGREGATOR_SOURCES = ["remotive", "remoteok", "himalayas", "getonbrd", "jobicy"] as const;
+export const AGGREGATOR_SOURCES = ["remotive", "remoteok", "himalayas", "getonbrd", "jobicy", "computrabajo"] as const;
 /** Portales que se consultan por cada puesto deseado, no una sola vez para todos. */
-export const SEARCH_BY_TERM_SOURCES = new Set<string>(["himalayas", "getonbrd"]);
+export const SEARCH_BY_TERM_SOURCES = new Set<string>(["himalayas", "getonbrd", "computrabajo"]);
 /** ATS de empresas: se consultan por cada empresa que siga el usuario ("greenhouse:stripe"). */
 export const ATS_SOURCES = ["greenhouse", "lever", "ashby", "workable", "smartrecruiters"] as const;
 
@@ -43,6 +46,7 @@ export const SOURCE_LABELS: Record<AggregatorSource | AtsSource, string> = {
     himalayas: "Himalayas (remoto)",
     getonbrd: "Get on Board (LatAm)",
     jobicy: "Jobicy (remoto, LatAm)",
+    computrabajo: "Computrabajo (Argentina)",
     greenhouse: "Greenhouse",
     lever: "Lever",
     ashby: "Ashby",
@@ -50,33 +54,7 @@ export const SOURCE_LABELS: Record<AggregatorSource | AtsSource, string> = {
     smartrecruiters: "SmartRecruiters",
 };
 
-const ENTITIES: Record<string, string> = { amp: "&", lt: "<", gt: ">", quot: '"', apos: "'", nbsp: " " };
-
-function decodeEntities(text: string): string {
-    return text.replace(/&(#x[0-9a-f]+|#\d+|[a-z]+);/gi, (match, code: string) => {
-        if (code[0] === "#") {
-            const value = code[1].toLowerCase() === "x" ? parseInt(code.slice(2), 16) : parseInt(code.slice(1), 10);
-            return Number.isFinite(value) ? String.fromCodePoint(value) : match;
-        }
-        return ENTITIES[code.toLowerCase()] ?? match;
-    });
-}
-
-/** HTML a texto plano conservando los saltos de párrafo y las viñetas. */
-export function htmlToText(html: string): string {
-    // Greenhouse manda el HTML con las entidades escapadas (&lt;p&gt;): primero se decodifica
-    const source = /&lt;\/?[a-z]/i.test(html) ? decodeEntities(html) : html;
-    return decodeEntities(
-        source
-            .replace(/<(script|style)[\s\S]*?<\/\1>/gi, "")
-            .replace(/<li[^>]*>/gi, "\n• ")
-            .replace(/<\/(p|div|h[1-6]|ul|ol)>|<br\s*\/?>/gi, "\n")
-            .replace(/<[^>]+>/g, "")
-    )
-        .replace(/[ \t]+/g, " ")
-        .replace(/\n\s*\n\s*/g, "\n\n")
-        .trim();
-}
+export { htmlToText } from "./html";
 
 type Json = Record<string, unknown>;
 
@@ -460,6 +438,8 @@ export function parseAtsBoard(value: string): { source: AtsSource; board: string
 }
 
 const USER_AGENT = "KeyWords job tracker (+https://kwtools.vercel.app)";
+// Las páginas públicas de Computrabajo responden a un navegador, no a un cliente genérico
+const BROWSER_USER_AGENT = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0.0.0 Safari/537.36";
 /** Detalles que se piden por empresa en SmartRecruiters (un pedido por publicación). */
 const SMARTRECRUITERS_MAX_DETAILS = 40;
 const TIMEOUT_MS = 15_000;
@@ -472,6 +452,17 @@ async function getJson(url: string): Promise<unknown> {
     });
     if (!response.ok) throw new Error(`${response.status} ${response.statusText} (${url})`);
     return response.json();
+}
+
+/** Una página HTML pública, pedida como la pediría un navegador en Argentina. */
+export async function getText(url: string): Promise<string> {
+    const response = await fetch(url, {
+        headers: { "User-Agent": BROWSER_USER_AGENT, Accept: "text/html,application/xhtml+xml", "Accept-Language": "es-AR,es;q=0.9" },
+        signal: AbortSignal.timeout(TIMEOUT_MS),
+        cache: "no-store",
+    });
+    if (!response.ok) throw new Error(`${response.status} ${response.statusText} (${url})`);
+    return response.text();
 }
 
 /** Ofertas recientes de un portal agregador. `terms` son los puestos buscados. */
@@ -512,6 +503,9 @@ export async function fetchAggregator(source: AggregatorSource, terms: string[])
             );
             return results.flatMap(parseJobicy);
         }
+        case "computrabajo":
+            // Sin API: se leen las páginas de resultados por puesto y el detalle de las recientes
+            return fetchComputrabajo(terms, getText);
     }
 }
 

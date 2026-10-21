@@ -28,7 +28,8 @@ export type SearchRules = Pick<SearchSettings, "autoApproveMinScore" | "minSalar
 
 export const SEARCH_DEFAULTS: Omit<SearchSettings, "lastRunAt" | "lastResult"> = {
     enabled: false,
-    sources: [...AGGREGATOR_SOURCES],
+    // Computrabajo es solo para Argentina y se postula a mano: cada usuario lo marca si le sirve
+    sources: AGGREGATOR_SOURCES.filter((source) => source !== "computrabajo"),
     atsBoards: [],
     minScore: 40,
     maxPerRun: 40,
