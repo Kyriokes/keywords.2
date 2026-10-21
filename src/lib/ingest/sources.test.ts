@@ -149,6 +149,27 @@ describe("parsers", () => {
         ]);
     });
 
+    it("Get on Board: toma el nivel que publica el portal (Expert cuenta como Senior)", () => {
+        const level = (name: string) => ({ data: { id: "1", type: "seniority", attributes: { name } } });
+        const offer = (id: string, seniority?: unknown) => ({
+            id,
+            attributes: { title: "Dev", description: "<p>React</p>", seniority },
+            links: { public_url: `https://www.getonbrd.com/jobs/${id}` },
+        });
+        const jobs = parseGetOnBoard({
+            data: [
+                offer("senior", level("Senior")),
+                offer("ssr", level("Semi Senior")),
+                offer("junior", level("Junior")),
+                offer("sin-experiencia", level("No experience")),
+                offer("expert", level("Expert")),
+                offer("sin-expandir", { data: { id: "4", type: "seniority" } }),
+                offer("sin-nivel"),
+            ],
+        });
+        expect(jobs.map((job) => job.seniorityHint ?? null)).toEqual(["SENIOR", "SEMI_SENIOR", "JUNIOR", "TRAINEE", "SENIOR", null, null]);
+    });
+
     it("Greenhouse, Lever y Ashby prefijan el id con la empresa", () => {
         const greenhouse = parseGreenhouse(
             { jobs: [{ id: 5, title: "SRE", absolute_url: "https://boards.greenhouse.io/acme/jobs/5", content: "&lt;p&gt;SRE&lt;/p&gt;", location: { name: "Remote" } }] },

@@ -15,6 +15,8 @@ const MANUAL_DOMAINS = [
     "icims.com",
     "taleo.net",
     "successfactors.com",
+    "successfactors.eu",
+    "careers.capgemini.com",
     "oraclecloud.com",
     "linkedin.com",
     "indeed.com",

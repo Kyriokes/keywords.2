@@ -251,6 +251,20 @@ function relationNames(relation: unknown): string[] {
     });
 }
 
+/** El nivel de Get on Board ("No experience", "Junior", "Semi Senior", "Senior", "Expert"). Solo llega si se pide en `expand`. */
+const GET_ON_BOARD_SENIORITY: [RegExp, Seniority][] = [
+    [/no experience|sin experiencia/i, "TRAINEE"],
+    [/semi/i, "SEMI_SENIOR"],
+    [/junior/i, "JUNIOR"],
+    [/senior|expert/i, "SENIOR"],
+];
+
+function getOnBoardSeniority(relation: unknown): Seniority | null {
+    const level = isObject(relation) && isObject(relation.data) && isObject(relation.data.attributes) ? str(relation.data.attributes.name) : null;
+    if (!level) return null;
+    return GET_ON_BOARD_SENIORITY.find(([pattern]) => pattern.test(level))?.[1] ?? null;
+}
+
 /**
  * Ubicación legible a partir de la modalidad de Get on Board: "Remoto", "Remoto desde South America",
  * "Híbrido · Santiago, Chile" o "Presencial · Argentina". Así los filtros saben dónde hay que estar.
@@ -299,6 +313,7 @@ export function parseGetOnBoard(data: unknown): IngestedJob[] {
                 // Get on Board publica el rango en USD por mes y la fecha en segundos unix
                 ...monthlyUsdRange(attributes.min_salary, attributes.max_salary, "USD", "month"),
                 publishedAt: toIsoDate(attributes.published_at),
+                seniorityHint: getOnBoardSeniority(attributes.seniority),
             });
         })
     );
@@ -489,7 +504,7 @@ export async function fetchAggregator(source: AggregatorSource, terms: string[])
                 terms.map((term) =>
                     getJson(
                         `https://www.getonbrd.com/api/v0/search/jobs?query=${encodeURIComponent(term)}&per_page=50` +
-                            `&expand=["company","location_cities","location_regions","location_tenants"]`
+                            `&expand=["company","location_cities","location_regions","location_tenants","seniority"]`
                     )
                 )
             );

@@ -27,6 +27,12 @@ describe("applyModeForUrl", () => {
         expect(applyModeForUrl("https://remoteOK.com/remote-jobs/remote-dev-1137415")).toBe("UNSUPPORTED");
     });
 
+    it("marca como manuales los SuccessFactors, incluido el de Capgemini, que obligan a crear una cuenta con contraseña", () => {
+        expect(applyModeForUrl("https://career5.successfactors.eu/careers?company=capgemitecP3")).toBe("UNSUPPORTED");
+        expect(applyModeForUrl("https://careers.capgemini.com/job/Buenos-Aires-Frontend-Deveoper-Ssr/1445312633/")).toBe("UNSUPPORTED");
+        expect(applyModeForUrl("https://performancemanager4.successfactors.com/sf/careers/jobreqcareers")).toBe("UNSUPPORTED");
+    });
+
     it("no se confunde con dominios que solo contienen el nombre", () => {
         expect(applyModeForUrl("https://notlinkedin.com.example.org/jobs/1")).toBe("EXTERNAL_FORM");
     });
