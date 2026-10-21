@@ -58,7 +58,7 @@ describe("saveSearchRun", () => {
     it("guarda la corrida con el desglose, registra las ofertas y borra las viejas", async () => {
         db.ingestedOffer.findMany.mockResolvedValue([]);
         const result = {
-            fetched: 2, fresh: 2, matchedRole: 1, filtered: 0, created: 1, deferred: 0, decisions: [], errors: ["jobicy: 500"], summary: "",
+            fetched: 2, fresh: 2, matchedRole: 1, filtered: 0, created: 1, autoApproved: 0, deferred: 0, closed: 0, enriched: 0, decisions: [], errors: ["jobicy: 500"], summary: "",
             offers: [offer("remotive:1")],
             bySource: { remotive: { fetched: 2, fresh: 2, matchedRole: 1, passed: 1, rejected: 0, error: null } },
         } satisfies SearchRunResult;

@@ -1,6 +1,7 @@
 import { z } from "zod";
 import { SENIORITY_POLICIES, WORK_MODES } from "@/lib/ingest/eligibility";
 import { SKIP_REASONS } from "@/lib/applications/skipReasons";
+import { SENIORITY_LEVELS } from "@/lib/positions/rules";
 import { PREFERENCE_KINDS } from "@/lib/preferences/kinds";
 
 export const LIMITS = {
@@ -173,6 +174,8 @@ export const createApplicationSchema = z.object({
     externalId: optionalText(LIMITS.externalId),
     score: z.number().int().min(0).max(100).optional(),
     notes: optionalText(LIMITS.notes),
+    // Nivel que la búsqueda dedujo del portal o de la descripción, para cuando el título no lo dice
+    seniority: z.enum(SENIORITY_LEVELS).optional(),
 });
 
 export const uploadCvSchema = z.object({

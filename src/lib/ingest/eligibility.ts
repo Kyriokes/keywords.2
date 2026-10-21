@@ -1,9 +1,11 @@
 /**
  * Filtros que descartan ofertas a las que no tiene sentido postular: ubicación fuera de la región,
- * ciudadanía, permisos de trabajo, mudanza, modalidad, liderazgo y años de experiencia de más.
- * Funciones puras: se testean con fragmentos reales de ofertas.
+ * ciudadanía, permisos de trabajo, mudanza, modalidad, liderazgo, años de experiencia de más, otro
+ * idioma, "talent pools", tareas para entrenar IA, sueldo publicado por debajo del mínimo y frases
+ * que el usuario pidió evitar. Funciones puras: se testean con fragmentos reales de ofertas.
  */
 
+import { detectAdLanguage, type AdLanguage } from "@/lib/applications/language";
 import { SENIORITY_LABELS, type Seniority } from "@/lib/positions/rules";
 
 export const WORK_MODES = ["REMOTE", "REMOTE_US_HOURS", "HYBRID", "ONSITE"] as const;
@@ -42,9 +44,14 @@ export interface OfferForEligibility {
     title: string;
     location: string | null;
     description: string;
+    /** Nivel según el título (clasificador); null si el título no lo dice. */
     seniority: Seniority | null;
+    /** Nivel que informa el portal (Himalayas lo manda), para cuando el título no lo dice. */
+    seniorityHint?: Seniority | null;
     /** Sueldo mínimo publicado en USD por mes, si se conoce. */
     salaryUsdMonthly?: number | null;
+    /** Máximo del rango publicado en USD por mes, si se conoce. */
+    salaryMaxUsdMonthly?: number | null;
 }
 
 export interface EligibilityRules {
@@ -53,6 +60,10 @@ export interface EligibilityRules {
     minScore: number;
     /** Sueldo (USD por mes) que tiene que superar una oferta para aceptar mudarse; null = nunca. */
     minRelocationSalaryUsd: number | null;
+    /** Sueldo mínimo (USD por mes): una oferta que publica menos se descarta; null = no mirar el sueldo. */
+    minSalaryUsdMonthly?: number | null;
+    /** Frases que descartan la oferta si aparecen en el título o la descripción (preferencias del usuario). */
+    avoidPhrases?: string[];
 }
 
 export interface Eligibility {
@@ -62,6 +73,12 @@ export interface Eligibility {
     minScore: number;
     workMode: WorkMode | null;
     yearsRequired: number | null;
+    /** Nivel que se usó: el del título, el del portal o el deducido de la descripción. */
+    seniority: Seniority | null;
+    /** Idioma del aviso. */
+    language: AdLanguage;
+    /** Avisos que no bloquean pero conviene saber antes de postular; frenan la aprobación automática. */
+    warnings: string[];
     /** Resumen corto para las notas de la oferta, como "Remoto · Senior · pide 4 años". */
     summary: string;
 }
@@ -73,6 +90,9 @@ const ALLOWED_PLACES =
     /\b(argentina|buenos aires|caba|capital federal|gba|amba|latam|latin america|latinoamerica|south america|sudamerica|americas|worldwide|anywhere|global|any country|everywhere)\b/;
 const BUENOS_AIRES =
     /\b(buenos aires|caba|capital federal|gba|amba|palermo|microcentro|puerto madero|belgrano|nunez|vicente lopez|olivos|san isidro|martinez)\b/;
+/** Regiones o países que en el título señalan que la búsqueda es solo para ahí. */
+const TITLE_REGION =
+    /\b(europe|european|emea|eu|uk|united kingdom|us only|usa only|us-only|united states|canada|india|apac|asia|australia|germany|poland|portugal|spain|españa|mexico|méxico|brazil|brasil|colombia|chile|peru|perú)\b/i;
 
 const HYBRID = /\b(hybrid|hibrid[oa])\b/;
 const ONSITE = /\b(on-?site|presencial|in-office)\b/;
@@ -96,11 +116,60 @@ const WORK_AUTHORIZATION = /\b(?:authori[sz]ed|eligible|permitted|legally able)\
 
 // En el título alcanza la palabra; en la descripción, solo frases que no sean "paid and unpaid leave"
 const UNPAID_TITLE = /\b(unpaid|no remunerad[ao]s?|ad honorem|volunteer|voluntari[oa]|voluntariado)\b/;
-const UNPAID_BODY = /\b(unpaid (internship|position|role)|this (is an? )?unpaid|pasantia no remunerada|no remunerad[ao]|ad honorem)\b/;
+const UNPAID_BODY =
+    /\b(unpaid (internship|position|role)|this (is an? )?unpaid|pasantia no remunerada|no remunerad[ao]|ad honorem|volunteer (position|role|opportunity|basis|work|developer|engineer)|this is an? volunteer|unpaid volunteer|voluntariado|puesto voluntario|trabajo voluntario)\b/;
 /** Trabajos de tareas para entrenar o evaluar modelos de IA (tipo Remotasks), no puestos de desarrollo. */
 const AI_TASKS = /\b(coding tasks?|ai (coding |training |evaluation )?tasks?|ai trainer|ai training|ai tutor|data annotation|annotator|rlhf)\b|\btareas\b.*\b(ia|ai)\b/;
+/** Lo mismo cuando el título parece normal y el cuerpo cuenta que se cobra por tarea o se entrenan modelos. */
+const AI_TASKS_BODY =
+    /\b(paid per task|pay(ment)? per task|per[- ]task (basis|pay|payment|rate)|train(ing)? (ai|llm|language) models?|rlhf|data (annotation|labeling|labelling)|coding tasks for ai|ai evaluation tasks?)\b/;
+/** Convocatorias sin una vacante concreta: se guarda el CV "para más adelante". */
+const NOT_A_JOB =
+    /\b(talent pool|talent community|always recruiting|evergreen (role|posting|requisition|position)|general application|open application|spontaneous application|banco de talentos?|base de talentos?|pool de talentos?|comunidad de talento|candidatura espontanea|postulacion espontanea)\b/;
 
-const LEADERSHIP =/\b(lead|leader|lider|principal|staff|manager|head|director|architect|arquitect[oa]|vp|chief|cto|gerente|jef[ea])\b/;
+const LEADERSHIP = /\b(lead|leader|lider|principal|staff|manager|head|director|architect|arquitect[oa]|vp|chief|cto|gerente|jef[ea])\b/;
+
+// Nivel escrito como número o letra en el título: "Software Engineer 4", "Engineer III", "L5"
+const ROLE_WORD = "(?:engineer|developer|desarrollador[a]?|programmer|programador[a]?|swe|sde)";
+const TITLE_LEVEL_SENIOR = new RegExp(`\\b${ROLE_WORD}\\s*(?:iii|iv|v|3|4|5)\\b|\\b[el][4-7]\\b`);
+const TITLE_LEVEL_SEMI = new RegExp(`\\b${ROLE_WORD}\\s*(?:ii|2)\\b|\\b[el]3\\b`);
+// En la descripción se mira solo el comienzo, donde se presenta el puesto
+const DESCRIPTION_HEAD = 600;
+const SENIOR_ROLE = /\bsenior\s+(?:[a-z.+#/-]+\s+){0,3}?(?:engineer|developer|desarrollador[a]?|programmer|programador[a]?|ingenier[oa])\b/;
+const JUNIOR_WORDS = /\b(junior|jr\.?|entry[- ]level|recien graduad[oa]s?|trainee|sin experiencia|no (prior )?experience (required|needed))\b/;
+const MID_WORDS = /\b(semi ?senior|ssr|mid[- ]level|intermedio)\b/;
+
+// Idiomas que una oferta puede exigir y en los que el usuario no trabaja; se buscan en el texto normalizado
+const REQUIRED_LANGUAGES: [RegExp, string][] = [
+    [/\b(german|deutsch|aleman)\b/, "alemán"],
+    [/\b(french|frances)\b/, "francés"],
+    [/\b(italian|italiano)\b/, "italiano"],
+    [/\b(portuguese|portugues)\b/, "portugués"],
+    [/\b(russian|ruso)\b/, "ruso"],
+    [/\b(dutch|neerlandes|holandes)\b/, "neerlandés"],
+    [/\b(polish|polaco)\b/, "polaco"],
+    [/\b(greek|griego)\b/, "griego"],
+    [/\b(japanese|japones)\b/, "japonés"],
+    [/\b(chinese|mandarin|chino)\b/, "chino"],
+    [/\b(arabic|arabe)\b/, "árabe"],
+    [/\b(hebrew|hebreo)\b/, "hebreo"],
+    [/\b(turkish|turco)\b/, "turco"],
+    [/\b(swedish|sueco)\b/, "sueco"],
+    [/\b(norwegian|noruego)\b/, "noruego"],
+    [/\b(danish|danes)\b/, "danés"],
+    [/\b(czech|checo)\b/, "checo"],
+    [/\b(hungarian|hungaro)\b/, "húngaro"],
+    [/\b(romanian|rumano)\b/, "rumano"],
+];
+const LANGUAGE_DEMAND =
+    /\b(fluent|fluency|native|proficien(t|cy)|advanced|business|professional|required|mandatory|must|speaker|speaking|c1|c2|b2|fluido|avanzado|excluyente|indispensable|nativo|requerido|obligatorio)\b/;
+const LANGUAGE_OPTIONAL = /\b(plus|nice to have|bonus|preferred|valorad[oa]|deseable|advantage|would be|opcional|optional)\b/;
+/** Caracteres alrededor del idioma donde tiene que estar la exigencia. */
+const LANGUAGE_WINDOW = 40;
+
+/** Viajes obligatorios o periódicos: no bloquean, pero el usuario tiene que saberlo. */
+const TRAVEL =
+    /\b(travel|viajar|viajes?)\b[^.\n]{0,30}\b(required|mandatory|monthly|quarterly|weekly|mensual(es)?|trimestral(es)?|semanal(es)?|\d{1,2}\s?%)|\b(required|mandatory|monthly|quarterly|weekly|mensual|trimestral|\d{1,2}\s?%)\b[^.\n]{0,30}\b(travel|viajar|viajes?)\b/;
 
 const YEARS_PATTERNS = [
     // "3+ years of experience", "3-5 years experience", "4 years professional experience"
@@ -123,6 +192,33 @@ export function extractYearsRequired(text: string): number | null {
         }
     }
     return max;
+}
+
+/**
+ * Nivel del puesto cuando el título no lo nombra: un número o letra de nivel en el título
+ * ("Engineer 4", "L5") o cómo presenta el puesto el comienzo de la descripción.
+ */
+export function inferSeniority(title: string, description: string): Seniority | null {
+    const head = normalize(title);
+    if (TITLE_LEVEL_SENIOR.test(head)) return "SENIOR";
+    if (TITLE_LEVEL_SEMI.test(head)) return "SEMI_SENIOR";
+    const intro = normalize(description.slice(0, DESCRIPTION_HEAD));
+    if (JUNIOR_WORDS.test(intro)) return "JUNIOR";
+    if (MID_WORDS.test(intro)) return "SEMI_SENIOR";
+    if (SENIOR_ROLE.test(intro)) return "SENIOR";
+    return null;
+}
+
+/** Idioma que la oferta exige hablar (además de inglés o castellano); null si no pide ninguno. */
+export function requiredLanguage(text: string): string | null {
+    const body = normalize(text);
+    for (const [pattern, label] of REQUIRED_LANGUAGES) {
+        for (const match of body.matchAll(new RegExp(pattern.source, "g"))) {
+            const window = body.slice(Math.max(0, match.index - LANGUAGE_WINDOW), match.index + match[0].length + LANGUAGE_WINDOW);
+            if (LANGUAGE_DEMAND.test(window) && !LANGUAGE_OPTIONAL.test(window)) return label;
+        }
+    }
+    return null;
 }
 
 /** Cómo se trabaja según el título, la ubicación y la descripción; null si no hay pistas. */
@@ -152,6 +248,13 @@ function locationBlocker(location: string | null): string | null {
     // La modalidad que antepone Get on Board ("Híbrido · Santiago, Chile") no aporta al motivo
     const shown = location.trim().replace(/^(remoto desde|h[ií]brido\s*·|presencial\s*·)\s*/i, "");
     return places ? `Solo para ${shown}` : null;
+}
+
+/** "Solo para Europe" si el título dice para qué región es y no es la nuestra. */
+function titleRegionBlocker(title: string): string | null {
+    if (ALLOWED_PLACES.test(normalize(title))) return null;
+    const region = title.match(TITLE_REGION)?.[0];
+    return region ? `Solo para ${region}` : null;
 }
 
 /** Corta el lugar donde empieza el resto de la frase: "United States without current..." → "United States". */
@@ -185,9 +288,16 @@ const formatUsd = (amount: number) => `${amount.toLocaleString("es-AR")} USD/mes
 /** Decide si vale la pena postular a la oferta y con qué match mínimo. */
 export function checkEligibility(offer: OfferForEligibility, rules: EligibilityRules): Eligibility {
     const blockers: string[] = [];
+    const warnings: string[] = [];
+    const title = normalize(offer.title);
     const body = normalize(offer.description);
     const workMode = detectWorkMode(offer);
     const salary = offer.salaryUsdMonthly ?? null;
+    const salaryMax = offer.salaryMaxUsdMonthly ?? salary;
+    const seniority = offer.seniority ?? offer.seniorityHint ?? inferSeniority(offer.title, offer.description);
+    const language = detectAdLanguage(offer.description);
+
+    if (language === "other") blockers.push("Aviso en otro idioma");
 
     // Mudarse vale solo si el sueldo publicado supera el mínimo que eligió el usuario. Cuando la oferta
     // pide mudanza, dónde queda y cómo se trabaja son consecuencia de eso: el motivo es uno solo.
@@ -205,7 +315,7 @@ export function checkEligibility(offer: OfferForEligibility, rules: EligibilityR
         );
     }
 
-    const outsideLocation = relocationRequired ? null : locationBlocker(offer.location);
+    const outsideLocation = relocationRequired ? null : locationBlocker(offer.location) ?? titleRegionBlocker(offer.title);
     if (outsideLocation) blockers.push(outsideLocation);
 
     if (CITIZENSHIP.test(body)) blockers.push("Pide ciudadanía o clearance");
@@ -226,25 +336,44 @@ export function checkEligibility(offer: OfferForEligibility, rules: EligibilityR
         if (!BUENOS_AIRES.test(where)) blockers.push(`${MODE_SUMMARY[workMode]} fuera de Buenos Aires`);
     }
 
-    const title = normalize(offer.title);
+    const otherLanguage = requiredLanguage(offer.description);
+    if (otherLanguage) blockers.push(`Pide ${otherLanguage}`);
+
+    if (NOT_A_JOB.test(title) || NOT_A_JOB.test(body)) blockers.push("No es una vacante concreta");
     if (UNPAID_TITLE.test(title) || UNPAID_BODY.test(body)) blockers.push("Sin sueldo");
-    if (AI_TASKS.test(title)) blockers.push("Tareas para entrenar IA");
+    if (AI_TASKS.test(title) || AI_TASKS_BODY.test(body)) blockers.push("Tareas para entrenar IA");
+
+    if (rules.minSalaryUsdMonthly != null && salaryMax !== null && salaryMax < rules.minSalaryUsdMonthly) {
+        blockers.push(`Sueldo publicado por debajo de tu mínimo (${formatUsd(salaryMax)})`);
+    }
+
+    const avoided = (rules.avoidPhrases ?? []).find((phrase) => {
+        const key = normalize(phrase).trim();
+        return key && (title.includes(key) || body.includes(key));
+    });
+    if (avoided) blockers.push(`Evitás: ${avoided}`);
 
     const yearsRequired = extractYearsRequired(offer.description);
     let minScore = rules.minScore;
-    if (offer.seniority === "LEAD" || LEADERSHIP.test(title)) {
+    if (seniority === "LEAD" || LEADERSHIP.test(title)) {
         blockers.push("Puesto de liderazgo");
-    } else if (offer.seniority === "SENIOR" && rules.seniorityPolicy === "JUNIOR_ONLY") {
+    } else if (seniority === "SENIOR" && rules.seniorityPolicy === "JUNIOR_ONLY") {
         blockers.push("Senior");
     } else if (yearsRequired !== null && yearsRequired > MAX_YEARS[rules.seniorityPolicy]) {
-        blockers.push(offer.seniority === "SENIOR" ? `Senior: pide ${yearsRequired} años` : `Pide ${yearsRequired} años de experiencia`);
-    } else if (offer.seniority === "SENIOR" && rules.seniorityPolicy === "FLEXIBLE") {
+        blockers.push(seniority === "SENIOR" ? `Senior: pide ${yearsRequired} años` : `Pide ${yearsRequired} años de experiencia`);
+    } else if (seniority === "SENIOR" && rules.seniorityPolicy === "FLEXIBLE") {
         minScore = Math.max(minScore, SENIOR_MIN_SCORE);
+        warnings.push("Senior");
     }
+
+    if (relocationAccepted) warnings.push("pide mudanza");
+    if (workMode === "REMOTE_US_HOURS") warnings.push("horario de EE.UU.");
+    if (workMode === null) warnings.push("modalidad sin indicar");
+    if (TRAVEL.test(body)) warnings.push("menciona viajes");
 
     const summary = [
         workMode && MODE_SUMMARY[workMode],
-        offer.seniority && SENIORITY_LABELS[offer.seniority],
+        seniority && SENIORITY_LABELS[seniority],
         yearsRequired !== null && `pide ${yearsRequired} ${yearsRequired === 1 ? "año" : "años"}`,
         relocationAccepted && "pide mudanza",
         salary !== null && formatUsd(salary),
@@ -252,5 +381,5 @@ export function checkEligibility(offer: OfferForEligibility, rules: EligibilityR
         .filter(Boolean)
         .join(" · ");
 
-    return { blockers, minScore, workMode, yearsRequired, summary };
+    return { blockers, minScore, workMode, yearsRequired, seniority, language, warnings, summary };
 }

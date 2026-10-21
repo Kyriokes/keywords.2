@@ -117,7 +117,8 @@ export async function createApplicationForProfile(
             positionId,
             originalPositionTitle: input.positionTitle, // Snapshot History
             canonicalPositionId: classified.roleId,
-            seniority: classified.seniority,
+            // El título manda; si no dice el nivel, vale el que dedujo la búsqueda
+            seniority: classified.seniority ?? input.seniority,
             cvId: activeCv?.id,
 
             // Keywords Relation

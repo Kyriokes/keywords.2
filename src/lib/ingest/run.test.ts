@@ -5,16 +5,21 @@ vi.mock("server-only", () => ({}));
 const db = vi.hoisted(() => ({
     position: { findMany: vi.fn() },
     cV: { findFirst: vi.fn() },
-    jobApplication: { findMany: vi.fn() },
+    jobApplication: { findMany: vi.fn(), findUnique: vi.fn(), update: vi.fn() },
     cVKeyword: { findMany: vi.fn() },
     jobSearchSettings: { update: vi.fn() },
 }));
 const create = vi.hoisted(() => vi.fn());
 const fetchAggregator = vi.hoisted(() => vi.fn());
+const fetchAtsBoard = vi.hoisted(() => vi.fn());
 const record = vi.hoisted(() => ({ saveSearchRun: vi.fn() }));
+const preferences = vi.hoisted(() => ({ loadPreferenceRules: vi.fn() }));
+const skip = vi.hoisted(() => ({ skipApplications: vi.fn() }));
 
 vi.mock("@/lib/prisma", () => ({ default: db }));
 vi.mock("@/lib/applications/create", () => ({ createApplicationForProfile: create }));
+vi.mock("@/lib/preferences/preferences", () => preferences);
+vi.mock("@/lib/applications/skip", () => skip);
 // Cada keyword es una palabra en mayúsculas: "REACT NODE" → react, node. Las que terminan en "_TOOL" son herramientas.
 vi.mock("@/lib/keywords/dictionary", () => ({
     detectKeywords: async (text: string) =>
@@ -32,10 +37,12 @@ vi.mock("@/lib/positions/dictionary", () => ({
         core: title.toLowerCase(),
     }),
 }));
-vi.mock("./sources", async (importOriginal) => ({ ...(await importOriginal<typeof import("./sources")>()), fetchAggregator }));
+vi.mock("./sources", async (importOriginal) => ({ ...(await importOriginal<typeof import("./sources")>()), fetchAggregator, fetchAtsBoard }));
 vi.mock("./record", () => record);
 
 import { runAndRecord, runJobSearch, type SearchSettingsInput } from "./run";
+
+const NO_PREFERENCES = { avoidTechNames: [], avoidTechKeywordIds: new Set<string>(), avoidCompanyKeys: new Set<string>(), avoidPhrases: [] };
 
 const settings: SearchSettingsInput = {
     sources: ["remotive"],
@@ -47,11 +54,12 @@ const settings: SearchSettingsInput = {
     minRelocationSalaryUsd: null,
 };
 
+// Cada oferta es de otra empresa: la misma empresa con el mismo título contaría como repetida
 const job = (id: string, fields: Record<string, unknown>) => ({
     source: "remotive",
     externalId: id,
     title: "Full Stack Developer",
-    company: "Acme",
+    company: `Acme ${id}`,
     url: `https://remotive.com/${id}`,
     applyUrl: null,
     description: "REACT NODE",
@@ -65,7 +73,9 @@ beforeEach(() => {
     db.cV.findFirst.mockResolvedValue({ id: "cv-1" });
     db.jobApplication.findMany.mockResolvedValue([]);
     db.cVKeyword.findMany.mockResolvedValue(["react", "node", "typescript"].map((keywordId) => ({ keywordId })));
-    create.mockResolvedValue({ ok: true, data: {} });
+    create.mockImplementation(async (_profileId: string, input: { externalId: string }) => ({ ok: true, data: { application: { id: `app-${input.externalId}` } } }));
+    preferences.loadPreferenceRules.mockResolvedValue(NO_PREFERENCES);
+    skip.skipApplications.mockImplementation(async (_profileId: string, items: { id: string }[]) => ({ skipped: items.map((item) => item.id), learned: [] }));
     record.saveSearchRun.mockResolvedValue(undefined);
     fetchAggregator.mockResolvedValue([
         job("1", {}),
@@ -137,7 +147,7 @@ describe("runJobSearch", () => {
             ["remotive:3", "REJECTED", "Match 33% (mínimo 60%)"],
             ["remotive:4", "QUEUED", null],
         ]);
-        expect(result.offers[0]).toMatchObject({ source: "remotive", board: null, company: "Acme", roleName: "Full Stack Developer", score: 100 });
+        expect(result.offers[0]).toMatchObject({ source: "remotive", board: null, company: "Acme 1", roleName: "Full Stack Developer", score: 100 });
         expect(result.fresh).toBe(4);
         expect(result.bySource).toEqual({ remotive: { fetched: 4, fresh: 4, matchedRole: 4, passed: 2, rejected: 2, error: null } });
     });
@@ -181,6 +191,144 @@ describe("runJobSearch", () => {
 
         expect(result.bySource).toEqual({ remotive: { fetched: 0, fresh: 0, matchedRole: 0, passed: 0, rejected: 0, error: "503 Service Unavailable" } });
         expect(result.offers).toEqual([]);
+    });
+
+    it("aprueba solas las de match alto sin advertencias y con formulario que Claude puede completar", async () => {
+        const result = await runJobSearch("profile-1", { ...settings, autoApproveMinScore: 60 });
+
+        // La 1 es remota, match 100 y formulario externo; la 4 está en Workday
+        expect(create).toHaveBeenCalledWith("profile-1", expect.objectContaining({ externalId: "remotive:1", status: "APPROVED" }));
+        expect(create).toHaveBeenCalledWith("profile-1", expect.objectContaining({ externalId: "remotive:4", status: "READY" }));
+        expect(result.autoApproved).toBe(1);
+        expect(result.decisions[0]).toMatchObject({ status: "QUEUED", autoApproved: true });
+        expect(result.summary).toBe("4 ofertas revisadas, 4 de tus puestos, 2 descartadas por los filtros, 2 nuevas en la cola (1 aprobada sola).");
+    });
+
+    it("una advertencia frena la aprobación automática", async () => {
+        fetchAggregator.mockResolvedValue([job("8", { description: "REACT NODE. Remote, est business hours required." })]);
+
+        await runJobSearch("profile-1", { ...settings, autoApproveMinScore: 60 });
+
+        expect(create).toHaveBeenCalledWith("profile-1", expect.objectContaining({ externalId: "remotive:8", status: "READY" }));
+    });
+
+    it("las notas dicen cuándo se publicó, qué falta y las advertencias", async () => {
+        const now = new Date("2026-10-20T15:00:00.000Z");
+        fetchAggregator.mockResolvedValue([
+            job("9", { description: "REACT NODE GO KAFKA. Remote, est business hours required.", publishedAt: "2026-10-19T08:00:00.000Z" }),
+        ]);
+
+        await runJobSearch("profile-1", settings, new Map(), { now });
+
+        expect(create).toHaveBeenCalledWith(
+            "profile-1",
+            expect.objectContaining({ notes: "Remoto, horario de EE.UU. · publicada ayer · match 50% · falta: GO, KAFKA · horario de EE.UU." })
+        );
+    });
+
+    it("descarta las que en los requisitos piden un stack que no está en el CV", async () => {
+        fetchAggregator.mockResolvedValue([
+            job("10", { description: "We love REACT. Requirements: GO KAFKA and more." }),
+            job("11", { description: "We love NODE. Requirements: REACT GO." }),
+        ]);
+
+        const result = await runJobSearch("profile-1", settings, new Map(), { dryRun: true });
+
+        expect(result.decisions.map((decision) => [decision.externalId, decision.status, decision.reason])).toEqual([
+            ["remotive:10", "REJECTED", "Los requisitos piden GO, KAFKA"],
+            ["remotive:11", "PASSES", null],
+        ]);
+    });
+
+    it("respeta las preferencias: empresas y tecnologías a evitar", async () => {
+        preferences.loadPreferenceRules.mockResolvedValue({
+            ...NO_PREFERENCES,
+            avoidCompanyKeys: new Set(["acme 12"]),
+            avoidTechKeywordIds: new Set(["php"]),
+        });
+        fetchAggregator.mockResolvedValue([job("12", {}), job("13", { description: "REACT NODE. Requirements: REACT PHP." })]);
+
+        const result = await runJobSearch("profile-1", settings, new Map(), { dryRun: true });
+
+        expect(result.decisions.map((decision) => [decision.externalId, decision.reason])).toEqual([
+            ["remotive:12", "Evitás Acme 12"],
+            ["remotive:13", "Evitás PHP"],
+        ]);
+    });
+
+    it("no deja entrar más ofertas de una empresa que las que admite el tope mensual", async () => {
+        const recent = (id: string, status: string) => ({
+            id, source: "himalayas", status, applyUrl: null, company: "Acme 1", jobTitle: "Backend Engineer", date: new Date(),
+        });
+        db.jobApplication.findMany.mockResolvedValueOnce([]).mockResolvedValueOnce([recent("a", "APPROVED"), recent("b", "APPLIED"), recent("c", "SKIPPED")]);
+
+        const result = await runJobSearch("profile-1", { ...settings, maxPerCompanyPerMonth: 2 }, new Map(), { dryRun: true });
+
+        expect(result.decisions[0]).toMatchObject({ externalId: "remotive:1", status: "REJECTED", reason: "Ya tenés 2 ofertas de Acme 1 este mes" });
+    });
+
+    it("la misma búsqueda que ya llegó por otro portal no se repite, y toma el formulario directo del ATS", async () => {
+        db.jobApplication.findMany
+            .mockResolvedValueOnce([])
+            .mockResolvedValueOnce([
+                { id: "app-h", source: "himalayas", status: "APPROVED", applyUrl: null, company: "Acme 1", jobTitle: "Full Stack Developer", date: new Date() },
+            ]);
+        db.jobApplication.findUnique.mockResolvedValue({ notes: "Remoto · match 50%" });
+        fetchAggregator.mockResolvedValue([
+            job("1", { source: "greenhouse", externalId: "acme:7", url: "https://boards.greenhouse.io/acme/jobs/7", applyUrl: "https://boards.greenhouse.io/acme/jobs/7#app" }),
+        ]);
+
+        const result = await runJobSearch("profile-1", settings);
+
+        expect(create).not.toHaveBeenCalled();
+        expect(result.offers[0]).toMatchObject({ decision: "IN_ACCOUNT", reason: "Repetida: ya está desde Himalayas (remoto)" });
+        expect(db.jobApplication.update).toHaveBeenCalledWith({
+            where: { id: "app-h" },
+            data: { applyUrl: "https://boards.greenhouse.io/acme/jobs/7#app", notes: "Remoto · match 50%\nFormulario directo encontrado en Greenhouse" },
+        });
+        expect(result.enriched).toBe(1);
+        expect(result.fresh).toBe(0);
+    });
+
+    it("dentro de una misma búsqueda, la segunda copia de una oferta cuenta como repetida", async () => {
+        fetchAggregator.mockResolvedValue([job("1", {}), job("2", { company: "Acme 1", url: "https://remotive.com/2b" })]);
+
+        const result = await runJobSearch("profile-1", settings);
+
+        expect(create).toHaveBeenCalledTimes(1);
+        expect(result.offers[1]).toMatchObject({ decision: "IN_ACCOUNT", reason: "Repetida: ya está desde Remotive (remoto)" });
+    });
+
+    it("descarta como cerradas las ofertas de un ATS que respondió y ya no las publica", async () => {
+        fetchAggregator.mockResolvedValue([]);
+        fetchAtsBoard.mockResolvedValue([job("acme:1", { source: "greenhouse", url: "https://boards.greenhouse.io/acme/jobs/1" })]);
+        db.jobApplication.findMany
+            .mockResolvedValueOnce([])
+            .mockResolvedValueOnce([])
+            .mockResolvedValueOnce([
+                { id: "app-open", externalId: "greenhouse:acme:1" },
+                { id: "app-gone", externalId: "greenhouse:acme:999" },
+            ]);
+
+        const result = await runJobSearch("profile-1", { ...settings, atsBoards: ["greenhouse:acme"] });
+
+        expect(skip.skipApplications).toHaveBeenCalledWith(
+            "profile-1",
+            [{ id: "app-gone", reason: "CLOSED", detail: "Ya no está publicada en Greenhouse" }],
+            ["READY", "APPROVED"]
+        );
+        expect(result.closed).toBe(1);
+        expect(result.summary).toContain("1 oferta que seguías ya no está publicada y se descartó.");
+    });
+
+    it("si el ATS falló, no da por cerrada ninguna oferta", async () => {
+        fetchAggregator.mockResolvedValue([]);
+        fetchAtsBoard.mockRejectedValue(new Error("500"));
+
+        const result = await runJobSearch("profile-1", { ...settings, atsBoards: ["greenhouse:acme"] });
+
+        expect(skip.skipApplications).not.toHaveBeenCalled();
+        expect(result.closed).toBe(0);
     });
 });
 

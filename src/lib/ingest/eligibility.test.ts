@@ -1,5 +1,13 @@
 import { describe, expect, it } from "vitest";
-import { checkEligibility, detectWorkMode, extractYearsRequired, type EligibilityRules, type OfferForEligibility } from "./eligibility";
+import {
+    checkEligibility,
+    detectWorkMode,
+    extractYearsRequired,
+    inferSeniority,
+    requiredLanguage,
+    type EligibilityRules,
+    type OfferForEligibility,
+} from "./eligibility";
 
 const rules: EligibilityRules = {
     workModes: ["REMOTE", "REMOTE_US_HOURS", "HYBRID"],
@@ -247,5 +255,111 @@ describe("ofertas que no son empleos de desarrollo", () => {
         for (const title of ["AI Frontend Developer", "Full Stack AI Engineer", "AI Automation Engineer — Contract", "Backend Engineer, Agent Tools (LATAM)"]) {
             expect(checkEligibility(offer({ title }), rules).blockers, title).toEqual([]);
         }
+    });
+
+    it("descarta las tareas de IA y el voluntariado aunque el título parezca normal", () => {
+        // Xperteez: "Frontend Engineer, Remote - Contract" y en el cuerpo se cobra por tarea
+        expect(
+            checkEligibility(offer({ title: "Frontend Engineer, Remote - Contract", description: "You will be paid per task completed. React experience." }), rules).blockers
+        ).toEqual(["Tareas para entrenar IA"]);
+        expect(checkEligibility(offer({ description: "Help us train AI models by reviewing code. Remote." }), rules).blockers).toEqual(["Tareas para entrenar IA"]);
+        // SIL International: "Web Developer" voluntario
+        expect(checkEligibility(offer({ title: "Web Developer", description: "This is a volunteer position with our ministry. React, Node." }), rules).blockers).toEqual(["Sin sueldo"]);
+    });
+
+    it("descarta las convocatorias que no son una vacante concreta", () => {
+        expect(checkEligibility(offer({ title: "Backend Developer - Talent Pool" }), rules).blockers).toEqual(["No es una vacante concreta"]);
+        expect(checkEligibility(offer({ title: "Software Developer (Always Recruiting)" }), rules).blockers).toEqual(["No es una vacante concreta"]);
+        expect(checkEligibility(offer({ description: "Join our talent community and we'll reach out when a role opens. React, Node." }), rules).blockers).toEqual([
+            "No es una vacante concreta",
+        ]);
+        // La frase de cierre habitual no es un talent pool
+        expect(checkEligibility(offer({ description: "React, Node. We will keep your CV for future opportunities." }), rules).blockers).toEqual([]);
+    });
+});
+
+describe("idioma", () => {
+    it("descarta un aviso escrito en otro idioma", () => {
+        const greek = "Ζητείται προγραμματιστής για την ανάπτυξη εφαρμογών με React και Node.js. Απαραίτητη η εμπειρία σε παρόμοια θέση και η γνώση αγγλικών.";
+        const result = checkEligibility(offer({ source: "himalayas", title: "Backend / Full Stack Developer", description: greek }), rules);
+        expect(result.blockers).toEqual(["Aviso en otro idioma"]);
+        expect(result.language).toBe("other");
+    });
+
+    it("descarta las que exigen otro idioma y acepta cuando es un plus", () => {
+        expect(checkEligibility(offer({ description: "Fluent German is required for this role. React, Node." }), rules).blockers).toEqual(["Pide alemán"]);
+        expect(checkEligibility(offer({ description: "Russian-speaking candidates only. NestJS, Go." }), rules).blockers).toEqual(["Pide ruso"]);
+        expect(checkEligibility(offer({ description: "Portugués avanzado excluyente. React y Node." }), rules).blockers).toEqual(["Pide portugués"]);
+        expect(checkEligibility(offer({ description: "Portuguese is a plus. React, Node." }), rules).blockers).toEqual([]);
+        expect(checkEligibility(offer({ description: "We serve customers in Germany and France. React, Node." }), rules).blockers).toEqual([]);
+    });
+
+    it("requiredLanguage devuelve el idioma en castellano", () => {
+        expect(requiredLanguage("Must be a native French speaker.")).toBe("francés");
+        expect(requiredLanguage("Nice to have: Italian.")).toBeNull();
+    });
+});
+
+describe("nivel deducido", () => {
+    it("lee el nivel numérico del título", () => {
+        expect(inferSeniority("Software Engineer 4", "")).toBe("SENIOR");
+        expect(inferSeniority("Software Engineer III", "")).toBe("SENIOR");
+        expect(inferSeniority("Software Engineer II", "")).toBe("SEMI_SENIOR");
+        expect(inferSeniority("Backend Developer L5", "")).toBe("SENIOR");
+    });
+
+    it("lee cómo presenta el puesto el comienzo de la descripción", () => {
+        expect(inferSeniority("Full Stack Developer (Java, React) - Remote LATAM", "We are looking for a Senior Full Stack Developer to join our team.")).toBe("SENIOR");
+        expect(inferSeniority("Web Developer", "Entry level position, no experience required. You will learn React.")).toBe("JUNIOR");
+        expect(inferSeniority("Developer", "Buscamos un perfil semi senior para el equipo de pagos.")).toBe("SEMI_SENIOR");
+        // "senior" como adjetivo de otra cosa no cambia el nivel
+        expect(inferSeniority("Developer", "You will report to our senior leadership team.")).toBeNull();
+        expect(inferSeniority("Developer", "React, Node.")).toBeNull();
+    });
+
+    it("un Senior deducido pide más match y queda avisado", () => {
+        // NeueHealth "Software Engineer 4", match 53 → con el mínimo de 60 se descarta en la búsqueda
+        const result = checkEligibility(offer({ title: "Software Engineer 4", description: "React, Node. Remote in the Americas." }), rules);
+        expect(result.seniority).toBe("SENIOR");
+        expect(result.minScore).toBe(60);
+        expect(result.warnings).toContain("Senior");
+        expect(result.summary).toBe("Remoto · Senior");
+    });
+
+    it("usa el nivel que informa el portal cuando el título no lo dice", () => {
+        const result = checkEligibility(offer({ source: "himalayas", seniorityHint: "SEMI_SENIOR" }), rules);
+        expect(result.seniority).toBe("SEMI_SENIOR");
+        expect(result.summary).toBe("Remoto · Semi Senior");
+    });
+});
+
+describe("región, sueldo y preferencias", () => {
+    it("descarta las que en el título son para otra región", () => {
+        expect(checkEligibility(offer({ source: "himalayas", title: "Backend Engineer (Europe)" }), rules).blockers).toEqual(["Solo para Europe"]);
+        expect(checkEligibility(offer({ source: "himalayas", title: "Full Stack Developer - US only" }), rules).blockers).toEqual(["Solo para US only"]);
+        expect(checkEligibility(offer({ source: "himalayas", title: "Full Stack Developer - Remote LATAM" }), rules).blockers).toEqual([]);
+    });
+
+    it("descarta las que publican un sueldo por debajo del mínimo", () => {
+        const withMinimum: EligibilityRules = { ...rules, minSalaryUsdMonthly: 2500 };
+        expect(checkEligibility(offer({ source: "getonbrd", salaryUsdMonthly: 1200, salaryMaxUsdMonthly: 2000 }), withMinimum).blockers).toEqual([
+            "Sueldo publicado por debajo de tu mínimo (2.000 USD/mes)",
+        ]);
+        expect(checkEligibility(offer({ source: "getonbrd", salaryUsdMonthly: 2000, salaryMaxUsdMonthly: 3000 }), withMinimum).blockers).toEqual([]);
+        expect(checkEligibility(offer({ source: "getonbrd" }), withMinimum).blockers).toEqual([]);
+    });
+
+    it("descarta las que dicen una frase que el usuario pidió evitar", () => {
+        const avoiding: EligibilityRules = { ...rules, avoidPhrases: ["time tracker", "Hubstaff"] };
+        expect(checkEligibility(offer({ description: "React, Node. We use a time tracker during work hours." }), avoiding).blockers).toEqual(["Evitás: time tracker"]);
+        expect(checkEligibility(offer({ description: "React, Node." }), avoiding).blockers).toEqual([]);
+    });
+
+    it("avisa sin bloquear: modalidad sin indicar, horario de EE.UU., viajes", () => {
+        expect(checkEligibility(offer({}), rules).warnings).toEqual(["modalidad sin indicar"]);
+        expect(checkEligibility(offer({ source: "remotive", description: "Remote, EST hours. Travel required quarterly to Austin." }), rules).warnings).toEqual([
+            "horario de EE.UU.",
+            "menciona viajes",
+        ]);
     });
 });

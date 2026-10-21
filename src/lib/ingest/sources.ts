@@ -4,6 +4,8 @@
  * Solo se usan APIs abiertas que los portales ofrecen para esto: nada de scraping.
  */
 
+import type { Seniority } from "@/lib/positions/rules";
+
 export interface IngestedJob {
     source: string;
     externalId: string;
@@ -17,6 +19,12 @@ export interface IngestedJob {
     location: string | null;
     /** Sueldo mínimo publicado, en USD por mes; sin valor si no se publica o está en otra moneda. */
     salaryUsdMonthly?: number;
+    /** Máximo del rango publicado, en USD por mes. */
+    salaryMaxUsdMonthly?: number;
+    /** Cuándo se publicó (ISO), si el portal lo dice. */
+    publishedAt?: string;
+    /** Nivel que informa el portal, para cuando el título no lo dice. */
+    seniorityHint?: Seniority | null;
 }
 
 /** Portales que agregan ofertas de muchas empresas: se consultan una vez por búsqueda. */
@@ -111,6 +119,54 @@ export function monthlyUsd(min: unknown, max: unknown, currency: unknown, period
     return factor === undefined ? undefined : Math.round(amount * factor);
 }
 
+/** El rango completo en USD por mes: `salaryUsdMonthly` es el mínimo y `salaryMaxUsdMonthly` el máximo publicado. */
+export function monthlyUsdRange(
+    min: unknown,
+    max: unknown,
+    currency: unknown,
+    period: unknown
+): Pick<IngestedJob, "salaryUsdMonthly" | "salaryMaxUsdMonthly"> {
+    const floor = monthlyUsd(min, max, currency, period);
+    const ceiling = monthlyUsd(max, min, currency, period);
+    return {
+        salaryUsdMonthly: floor,
+        salaryMaxUsdMonthly: ceiling !== undefined && floor !== undefined && ceiling >= floor ? ceiling : undefined,
+    };
+}
+
+/** Fecha de publicación en ISO a partir de lo que mande el portal: ISO, segundos o milisegundos unix. */
+export function toIsoDate(value: unknown, now: Date = new Date()): string | undefined {
+    let time: number;
+    if (typeof value === "number") time = value < 1e12 ? value * 1000 : value;
+    else if (typeof value === "string" && value.trim()) {
+        const numeric = Number(value);
+        time = Number.isFinite(numeric) && /^\d+$/.test(value.trim()) ? (numeric < 1e12 ? numeric * 1000 : numeric) : Date.parse(value);
+    } else return undefined;
+    if (!Number.isFinite(time)) return undefined;
+    const date = new Date(time);
+    // Una fecha futura o de hace más de dos años no es la publicación de un aviso vigente
+    if (date.getTime() > now.getTime() + 24 * 60 * 60 * 1000 || now.getTime() - date.getTime() > 2 * 365 * 24 * 60 * 60 * 1000) return undefined;
+    return date.toISOString();
+}
+
+/** El nivel como lo publica Himalayas ("Entry-level", "Mid-level", "Senior", "Lead", "Manager"). */
+const HIMALAYAS_SENIORITY: [RegExp, Seniority][] = [
+    [/intern|entry/i, "JUNIOR"],
+    [/junior/i, "JUNIOR"],
+    [/mid/i, "SEMI_SENIOR"],
+    [/senior/i, "SENIOR"],
+    [/lead|manager|director|principal|staff|head|vp|executive/i, "LEAD"],
+];
+
+function himalayasSeniority(value: unknown): Seniority | null {
+    const levels = Array.isArray(value) ? value.map(str).filter((level): level is string => !!level) : [];
+    for (const level of levels) {
+        const match = HIMALAYAS_SENIORITY.find(([pattern]) => pattern.test(level));
+        if (match) return match[1];
+    }
+    return null;
+}
+
 export function parseRemotive(data: unknown): IngestedJob[] {
     const jobs = isObject(data) && Array.isArray(data.jobs) ? data.jobs : [];
     return compact(
@@ -124,6 +180,7 @@ export function parseRemotive(data: unknown): IngestedJob[] {
                 applyUrl: null,
                 description: str(item.description) && htmlToText(item.description as string),
                 location: str(item.candidate_required_location),
+                publishedAt: toIsoDate(item.publication_date),
             })
         )
     );
@@ -144,7 +201,8 @@ export function parseRemoteOk(data: unknown): IngestedJob[] {
                 description: str(item.description) && htmlToText(item.description as string),
                 location: str(item.location),
                 // Remote OK publica el sueldo anual en USD
-                salaryUsdMonthly: monthlyUsd(item.salary_min, item.salary_max, "USD", "year"),
+                ...monthlyUsdRange(item.salary_min, item.salary_max, "USD", "year"),
+                publishedAt: toIsoDate(item.date),
             })
         )
     );
@@ -163,7 +221,10 @@ export function parseHimalayas(data: unknown): IngestedJob[] {
                 applyUrl: null,
                 description: str(item.description) && htmlToText(item.description as string),
                 location: Array.isArray(item.locationRestrictions) ? himalayasLocation(item.locationRestrictions) : null,
-                salaryUsdMonthly: monthlyUsd(item.minSalary, item.maxSalary, item.currency, item.salaryPeriod),
+                ...monthlyUsdRange(item.minSalary, item.maxSalary, item.currency, item.salaryPeriod),
+                // pubDate viene en segundos unix; seniority es una lista como ["Senior"]
+                publishedAt: toIsoDate(item.pubDate),
+                seniorityHint: himalayasSeniority(item.seniority),
             })
         )
     );
@@ -194,7 +255,8 @@ export function parseJobicy(data: unknown): IngestedJob[] {
                 applyUrl: null,
                 description: str(item.jobDescription) && htmlToText(item.jobDescription as string),
                 location: str(item.jobGeo),
-                salaryUsdMonthly: monthlyUsd(item.salaryMin, item.salaryMax, item.salaryCurrency, item.salaryPeriod),
+                ...monthlyUsdRange(item.salaryMin, item.salaryMax, item.salaryCurrency, item.salaryPeriod),
+                publishedAt: toIsoDate(item.pubDate),
             })
         )
     );
@@ -256,8 +318,9 @@ export function parseGetOnBoard(data: unknown): IngestedJob[] {
                 applyUrl: null,
                 description: parts.length ? htmlToText(parts.join("\n")) : null,
                 location: getOnBoardLocation(attributes),
-                // Get on Board publica el rango en USD por mes
-                salaryUsdMonthly: monthlyUsd(attributes.min_salary, attributes.max_salary, "USD", "month"),
+                // Get on Board publica el rango en USD por mes y la fecha en segundos unix
+                ...monthlyUsdRange(attributes.min_salary, attributes.max_salary, "USD", "month"),
+                publishedAt: toIsoDate(attributes.published_at),
             });
         })
     );
@@ -276,6 +339,7 @@ export function parseGreenhouse(data: unknown, board: string): IngestedJob[] {
                 applyUrl: null,
                 description: str(item.content) && htmlToText(item.content as string),
                 location: isObject(item.location) ? str(item.location.name) : null,
+                publishedAt: toIsoDate(item.first_published ?? item.updated_at),
             })
         )
     );
@@ -298,9 +362,11 @@ export function parseLever(data: unknown, board: string): IngestedJob[] {
                 applyUrl: str(item.applyUrl),
                 description: description || null,
                 location: isObject(item.categories) ? str(item.categories.location) : null,
-                salaryUsdMonthly: isObject(item.salaryRange)
-                    ? monthlyUsd(item.salaryRange.min, item.salaryRange.max, item.salaryRange.currency, item.salaryRange.interval)
-                    : undefined,
+                ...(isObject(item.salaryRange)
+                    ? monthlyUsdRange(item.salaryRange.min, item.salaryRange.max, item.salaryRange.currency, item.salaryRange.interval)
+                    : {}),
+                // Lever manda createdAt en milisegundos
+                publishedAt: toIsoDate(item.createdAt),
             });
         })
     );
@@ -319,6 +385,7 @@ export function parseAshby(data: unknown, board: string): IngestedJob[] {
                 applyUrl: str(item.applyUrl),
                 description: str(item.descriptionPlain) ?? (str(item.descriptionHtml) && htmlToText(item.descriptionHtml as string)),
                 location: str(item.location),
+                publishedAt: toIsoDate(item.publishedAt),
             })
         )
     );
@@ -348,6 +415,7 @@ export function parseWorkable(data: unknown, board: string): IngestedJob[] {
                 applyUrl: str(item.application_url),
                 description: str(item.description) && htmlToText(item.description as string),
                 location: workableLocation(item),
+                publishedAt: toIsoDate(item.published ?? item.created_at),
             })
         )
     );
@@ -378,6 +446,7 @@ export function parseSmartRecruitersPosting(data: unknown, board: string): Inges
         applyUrl: str(data.applyUrl),
         description: parts.length ? htmlToText(parts.join("\n")) : null,
         location: isObject(data.location) ? smartRecruitersLocation(data.location) : null,
+        publishedAt: toIsoDate(data.releasedDate),
     });
 }
 
