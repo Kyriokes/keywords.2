@@ -11,9 +11,21 @@ export const publicRoutes = [
   "/login/oauth-error",
   "/api/auth", // Rutas internas de NextAuth
   "/opengraph-image", // Imagen para compartir: la piden las redes, sin sesión
+  // Los leen los buscadores y el navegador sin sesión; antes redirigían al login
+  "/robots.txt",
+  "/sitemap.xml",
+  "/manifest.webmanifest",
   "/api/mcp", // Servidor MCP para agentes: se autentica con el token personal, no con la cookie
   "/api/cron/job-search", // Cron de Vercel: se autentica con CRON_SECRET
 ];
+
+/** Coincide con la ruta exacta o con sus subrutas ("/user" no debe matchear "/users"). */
+export const isUnder = (pathname: string, route: string) =>
+  pathname === route || pathname.startsWith(`${route}/`);
+
+/** true si la ruta se sirve sin sesión. */
+export const isPublicPath = (pathname: string) =>
+  publicRoutes.includes(pathname) || isUnder(pathname, "/api/auth");
 
 /**
  * Diccionario de rutas protegidas y los roles que tienen acceso a ellas.

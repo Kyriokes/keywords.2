@@ -1,7 +1,10 @@
+import type { Metadata } from "next";
 import Link from "next/link";
 import { AlertTriangle } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+
+export const metadata: Metadata = { title: "No se pudo iniciar sesión", robots: { index: false, follow: false } };
 
 type OAuthErrorPageProps = {
   searchParams: Promise<{ reason?: string }>;

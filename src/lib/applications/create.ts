@@ -33,9 +33,21 @@ export async function createApplicationForProfile(
     const input = parsed.data;
     const provider = isProviderId(input.provider) ? input.provider : undefined;
 
-    const total = await prisma.jobApplication.count({
-        where: { profileId },
-    });
+    // Los controles y lo que hace falta para crearla no dependen entre sí: van en paralelo.
+    // La búsqueda automática crea decenas por corrida y cada viaje a la base suma.
+    const [total, duplicate, position, activeCv] = await Promise.all([
+        prisma.jobApplication.count({ where: { profileId } }),
+        input.link
+            ? prisma.jobApplication.findFirst({
+                  where: { profileId, link: { equals: input.link, mode: "insensitive" } },
+                  select: { id: true },
+              })
+            : null,
+        input.positionTitle
+            ? prisma.position.findFirst({ where: { profileId, title: input.positionTitle }, select: { id: true } })
+            : null,
+        prisma.cV.findFirst({ where: { profileId, isPrimary: true }, select: { id: true } }),
+    ]);
     if (total >= LIMITS.applicationsPerProfile) {
         return {
             ok: false,
@@ -43,40 +55,10 @@ export async function createApplicationForProfile(
             message: `Alcanzaste el máximo de ${LIMITS.applicationsPerProfile} postulaciones.`,
         };
     }
-
-    // Check for duplicates by link
-    if (input.link) {
-        const exists = await prisma.jobApplication.findFirst({
-            where: {
-                profileId,
-                link: { equals: input.link, mode: "insensitive" },
-            },
-            select: { id: true },
-        });
-        if (exists) {
-            return { ok: false, code: "DUPLICATE_LINK", message: "Esta oferta ya existe (link duplicado)." };
-        }
+    if (duplicate) {
+        return { ok: false, code: "DUPLICATE_LINK", message: "Esta oferta ya existe (link duplicado)." };
     }
-
-    // Find related Position if exists
-    let positionId: string | undefined;
-    if (input.positionTitle) {
-        const position = await prisma.position.findFirst({
-            where: {
-                profileId,
-                title: input.positionTitle,
-            },
-        });
-        positionId = position?.id;
-    }
-
-    // Find active CV
-    const activeCv = await prisma.cV.findFirst({
-        where: {
-            profileId,
-            isPrimary: true,
-        },
-    });
+    const positionId = position?.id;
 
     // Keywords: los términos recibidos pasan por el diccionario. Si la lista no fue revisada
     // (postulaciones importadas) se suman los que el diccionario detecta en la descripción;
@@ -89,10 +71,13 @@ export async function createApplicationForProfile(
     const classified = await classifyJobTitle(input.jobTitle);
 
     // Si no viene un score de afuera, se calcula: keywords de la oferta que ya están en el CV activo
-    const cvKeywords = activeCv
-        ? await prisma.cVKeyword.findMany({ where: { cvId: activeCv.id }, select: { keywordId: true } })
-        : [];
-    const score = input.score ?? computeMatchScore(keywordIds, cvKeywords.map((k) => k.keywordId)) ?? undefined;
+    let score = input.score;
+    if (score === undefined) {
+        const cvKeywords = activeCv
+            ? await prisma.cVKeyword.findMany({ where: { cvId: activeCv.id }, select: { keywordId: true } })
+            : [];
+        score = computeMatchScore(keywordIds, cvKeywords.map((k) => k.keywordId)) ?? undefined;
+    }
 
     const application = await prisma.jobApplication.create({
         data: {

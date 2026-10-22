@@ -591,12 +591,29 @@ export async function runSavedSearch(
     const settings = await prisma.jobSearchSettings.findUnique({ where: { profileId } });
     if (!settings) return { ok: false, code: "NOT_CONFIGURED", message: "Guardá la configuración de la búsqueda antes de buscar." };
 
-    const elapsed = settings.lastRunAt ? Date.now() - settings.lastRunAt.getTime() : Infinity;
-    if (elapsed < MANUAL_RUN_INTERVAL_MS) {
-        const minutes = Math.ceil((MANUAL_RUN_INTERVAL_MS - elapsed) / 60_000);
+    // La corrida se reserva en la base antes de empezar: si llegan dos pedidos juntos (dos clics, o el agente
+    // repitiendo la llamada), uno solo busca. Sin esto los dos creaban las mismas ofertas en la cola.
+    const now = Date.now();
+    const claimed = await prisma.jobSearchSettings.updateMany({
+        where: { profileId, OR: [{ lastRunAt: null }, { lastRunAt: { lt: new Date(now - MANUAL_RUN_INTERVAL_MS) } }] },
+        data: { lastRunAt: new Date(now) },
+    });
+    if (claimed.count === 0) {
+        // Si la última que leímos ya era vieja, otro pedido acaba de reservarla: falta la hora entera
+        const elapsed = settings.lastRunAt ? now - settings.lastRunAt.getTime() : Infinity;
+        const remaining = elapsed < MANUAL_RUN_INTERVAL_MS ? MANUAL_RUN_INTERVAL_MS - elapsed : MANUAL_RUN_INTERVAL_MS;
+        const minutes = Math.max(1, Math.ceil(remaining / 60_000));
         return { ok: false, code: "TOO_SOON", message: `Ya se buscó hace poco. Podés volver a buscar en ${minutes} min.` };
     }
 
-    const result = await runAndRecord(profileId, settings, undefined, trigger);
-    return { ok: true, data: { summary: result.summary, created: result.created } };
+    try {
+        const result = await runAndRecord(profileId, settings, undefined, trigger);
+        return { ok: true, data: { summary: result.summary, created: result.created } };
+    } catch (error) {
+        // Si la búsqueda no llegó a terminar, la reserva se devuelve para poder reintentar enseguida
+        await prisma.jobSearchSettings
+            .updateMany({ where: { profileId }, data: { lastRunAt: settings.lastRunAt } })
+            .catch((restoreError) => console.error("Search claim not released:", restoreError));
+        throw error;
+    }
 }

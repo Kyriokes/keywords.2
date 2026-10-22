@@ -39,6 +39,7 @@ import {
 } from "@/lib/applications/status";
 import { SKIP_REASON_LABELS, isSkipReason } from "@/lib/applications/skipReasons";
 import { usePersistentState } from "@/lib/usePersistentState";
+import { getApplicationDescription } from "@/actions/application-actions";
 
 // El filtro por estado se recuerda entre visitas
 const STATUS_FILTER_KEY = "keywords:historial:estado";
@@ -65,6 +66,22 @@ export function ApplicationsTable({ insights }: ApplicationsTableProps) {
   );
   const [globalFilter, setGlobalFilter] = useState("");
   const [selectedApp, setSelectedApp] = useState<JobApplication | null>(null);
+  // La lista no trae las descripciones: se piden al abrir cada detalle y quedan guardadas acá
+  const [descriptions, setDescriptions] = useState<Record<string, string | null>>({});
+
+  const openDetail = (app: JobApplication) => {
+    setSelectedApp(app);
+    if (app.jobDescription !== undefined || app.id in descriptions) return;
+    getApplicationDescription(app.id)
+      .then((text) => setDescriptions((current) => ({ ...current, [app.id]: text })))
+      .catch(() => {
+        toast.error("No se pudo cargar la descripción.");
+        setDescriptions((current) => ({ ...current, [app.id]: null }));
+      });
+  };
+  const selectedDescription = selectedApp
+    ? selectedApp.jobDescription ?? (selectedApp.id in descriptions ? descriptions[selectedApp.id] ?? "" : undefined)
+    : undefined;
 
   // Cuántas hay de cada estado, para mostrarlo en el selector
   const statusCounts = useMemo(() => {
@@ -192,7 +209,7 @@ export function ApplicationsTable({ insights }: ApplicationsTableProps) {
                     variant="outline" 
                     size="sm" 
                     className="flex items-center gap-2"
-                    onClick={() => setSelectedApp(row.original)}
+                    onClick={() => openDetail(row.original)}
                 >
                     <Eye className="w-4 h-4" /> Ver detalle
                 </Button>
@@ -433,8 +450,8 @@ export function ApplicationsTable({ insights }: ApplicationsTableProps) {
               )}
               <div>
                 <h4 className="font-semibold mb-2">Descripción del Puesto</h4>
-                <div className="text-sm text-muted-foreground whitespace-pre-wrap">
-                  {selectedApp.jobDescription || "Sin descripción disponible."}
+                <div className="text-sm text-muted-foreground whitespace-pre-wrap" aria-busy={selectedDescription === undefined}>
+                  {selectedDescription === undefined ? "Cargando…" : selectedDescription || "Sin descripción disponible."}
                 </div>
               </div>
               

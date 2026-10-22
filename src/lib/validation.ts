@@ -86,8 +86,12 @@ export function normalizeLink(raw: string): string | null {
     }
 }
 
+/** PostgreSQL no guarda el carácter nulo en un texto: llega en algunos PDF y textos pegados, y rompía el guardado. */
+const withoutNul = (value: string) => value.replace(/\u0000/g, "");
+
 const title = z
     .string()
+    .overwrite(withoutNul)
     .trim()
     .min(1, "El título no puede estar vacío.")
     .transform((value) => value.slice(0, LIMITS.title));
@@ -151,12 +155,13 @@ const optionalText = (max: number) =>
     z
         .string()
         .optional()
-        .transform((value) => value?.trim().slice(0, max) || undefined);
+        .transform((value) => (value === undefined ? undefined : withoutNul(value).trim().slice(0, max) || undefined));
 
 export const createApplicationSchema = z.object({
     jobTitle: title,
     jobDescription: z
         .string()
+        .overwrite(withoutNul)
         .max(LIMITS.jobDescription, `La descripción supera el máximo de ${LIMITS.jobDescription} caracteres.`),
     link: optionalLink,
     // Se conserva la escritura original: es el nombre visible de los términos que el diccionario no conoce
@@ -181,10 +186,11 @@ export const createApplicationSchema = z.object({
 export const uploadCvSchema = z.object({
     name: z
         .string()
+        .overwrite(withoutNul)
         .trim()
         .min(1, "El CV necesita un nombre.")
         .transform((value) => value.slice(0, LIMITS.cvName)),
-    text: z.string().max(LIMITS.cvText, `El texto del CV supera el máximo de ${LIMITS.cvText} caracteres.`),
+    text: z.string().overwrite(withoutNul).max(LIMITS.cvText, `El texto del CV supera el máximo de ${LIMITS.cvText} caracteres.`),
     keywords: z.unknown().transform((value) => sanitizeKeywords(value, LIMITS.cvKeywords)),
 });
 

@@ -8,6 +8,9 @@ import { z } from "zod";
 export const SUPPORTED_PROTOCOL_VERSIONS = ["2025-06-18", "2025-03-26", "2024-11-05"] as const;
 const LATEST_PROTOCOL_VERSION = SUPPORTED_PROTOCOL_VERSIONS[0];
 
+/** Mensajes que puede traer un lote. Un cliente real manda uno o dos; más es abuso. */
+export const MAX_BATCH = 20;
+
 export interface McpTool<Ctx> {
     name: string;
     description: string;
@@ -136,4 +139,27 @@ export async function handleMcpMessage<Ctx>(
         default:
             return fail(id, -32601, `Method not found: ${method}`);
     }
+}
+
+/**
+ * Procesa lo que llegó en un POST: un mensaje o, en las versiones viejas del protocolo, un lote.
+ * Los mensajes de un lote se procesan de a uno, para que un lote no dispare decenas de consultas
+ * a la vez, y un lote más grande que MAX_BATCH se rechaza entero sin ejecutar nada.
+ */
+export async function handleMcpPayload<Ctx>(
+    payload: unknown,
+    ctx: Ctx,
+    tools: McpTool<Ctx>[],
+    info: ServerInfo
+): Promise<JsonRpcResponse | JsonRpcResponse[] | null> {
+    if (!Array.isArray(payload)) return handleMcpMessage(payload, ctx, tools, info);
+    if (payload.length === 0) return fail(null, -32600, "Invalid Request: empty batch");
+    if (payload.length > MAX_BATCH) return fail(null, -32600, `Invalid Request: batch larger than ${MAX_BATCH}`);
+
+    const responses: JsonRpcResponse[] = [];
+    for (const message of payload) {
+        const response = await handleMcpMessage(message, ctx, tools, info);
+        if (response) responses.push(response);
+    }
+    return responses.length ? responses : null;
 }

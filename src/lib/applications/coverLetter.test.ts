@@ -5,6 +5,7 @@ const db = vi.hoisted(() => ({
     jobApplication: { findFirst: vi.fn() },
     coverLetter: { count: vi.fn(), findMany: vi.fn(), upsert: vi.fn() },
     cV: { findFirst: vi.fn() },
+    usageLog: { create: vi.fn(), count: vi.fn(), delete: vi.fn() },
 }));
 vi.mock("@/lib/prisma", () => ({ default: db }));
 const postToMcp = vi.hoisted(() => vi.fn());
@@ -32,13 +33,16 @@ const CLAIMS_GO = "Hola equipo de Acme,\n\n" + "Tengo experiencia con Go y con N
 const offer = (jobDescription: string) =>
     db.jobApplication.findFirst.mockResolvedValue({
         jobTitle: "Full Stack Developer", company: "Acme", jobDescription, coverLetter: null, cvVariant: null,
-        profile: { user: { name: "Sergio" } },
+        profile: { userId: "user-1", user: { name: "Sergio" } },
     });
 
 beforeEach(() => {
     vi.clearAllMocks();
     offer("React y Node para el equipo de pagos");
     db.coverLetter.count.mockResolvedValue(0);
+    db.usageLog.create.mockResolvedValue({ id: "use-1" });
+    db.usageLog.count.mockResolvedValue(1);
+    db.usageLog.delete.mockResolvedValue({});
     db.coverLetter.findMany.mockResolvedValue([]);
     db.cV.findFirst.mockResolvedValue({ text: "Sergio. Node, React y Prisma en KeyWords." });
     db.coverLetter.upsert.mockResolvedValue({});
@@ -131,6 +135,38 @@ describe("generateCoverLetterForApplication", () => {
 
         expect(postToMcp.mock.calls[1][0]).toContain("La versión anterior no estaba en inglés.");
         expect(result).toEqual({ ok: true, data: { text: ENGLISH } });
+    });
+
+    it("regenerar la misma carta cuenta para el tope diario: pasado el tope no llama a la IA", async () => {
+        // La misma oferta regenerada muchas veces deja una sola fila de carta, pero cada pedido queda registrado
+        db.usageLog.count.mockResolvedValue(61);
+        postToMcp.mockResolvedValue({ text: CLEAN, providerId: "groq" });
+
+        const result = await generateCoverLetterForApplication("profile-1", "app-1", { overwrite: true });
+
+        expect(result).toMatchObject({ ok: false, code: "LIMIT_REACHED" });
+        expect(postToMcp).not.toHaveBeenCalled();
+        expect(db.usageLog.create).toHaveBeenCalledWith({ data: { userId: "user-1", action: "GENERATE_COVER_LETTER" }, select: { id: true } });
+        // El pedido rechazado no ocupa cupo
+        expect(db.usageLog.delete).toHaveBeenCalledWith({ where: { id: "use-1" } });
+    });
+
+    it("si la IA no responde, el pedido no cuenta para el tope", async () => {
+        postToMcp.mockRejectedValue(new Error("timeout"));
+
+        const result = await generateCoverLetterForApplication("profile-1", "app-1");
+
+        expect(result).toMatchObject({ ok: false, code: "AI_SERVICE_UNAVAILABLE" });
+        expect(db.usageLog.delete).toHaveBeenCalledWith({ where: { id: "use-1" } });
+    });
+
+    it("una carta generada queda registrada y no se borra", async () => {
+        postToMcp.mockResolvedValue({ text: CLEAN, providerId: "groq" });
+
+        await generateCoverLetterForApplication("profile-1", "app-1");
+
+        expect(db.usageLog.create).toHaveBeenCalledTimes(1);
+        expect(db.usageLog.delete).not.toHaveBeenCalled();
     });
 
     it("si no puede leer el diccionario, genera la carta igual", async () => {

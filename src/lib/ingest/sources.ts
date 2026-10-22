@@ -7,7 +7,7 @@
 
 import type { Seniority } from "@/lib/positions/rules";
 import { fetchComputrabajo } from "./computrabajo";
-import { htmlToText } from "./html";
+import { htmlToText, stripNul } from "./html";
 
 export interface IngestedJob {
     source: string;
@@ -58,8 +58,15 @@ export { htmlToText } from "./html";
 
 type Json = Record<string, unknown>;
 
-const str = (value: unknown): string | null => (typeof value === "string" && value.trim() ? value.trim() : null);
+// Sin caracteres nulos: la base no los guarda y la oferta entera fallaría al crearse
+const str = (value: unknown): string | null => {
+    if (typeof value !== "string") return null;
+    const clean = stripNul(value).trim();
+    return clean || null;
+};
 const isObject = (value: unknown): value is Json => !!value && typeof value === "object" && !Array.isArray(value);
+/** Un link absoluto http(s) y sin espacios: lo único que se puede abrir y guardar como link. */
+const isWebUrl = (value: string | null): value is string => !!value && /^https?:\/\/[^\s/?#]+[^\s]*$/i.test(value);
 
 /** Arma la oferta solo si tiene lo mínimo para servir: id, título, link y descripción. */
 function job(fields: Omit<IngestedJob, "externalId" | "title" | "url" | "description"> & {
@@ -71,8 +78,10 @@ function job(fields: Omit<IngestedJob, "externalId" | "title" | "url" | "descrip
     const externalId = fields.externalId === undefined || fields.externalId === null ? null : String(fields.externalId);
     const title = str(fields.title);
     const url = str(fields.url);
-    if (!externalId || !title || !url || !/^https?:\/\//i.test(url) || !fields.description) return null;
-    return { ...fields, externalId, title, url, description: fields.description };
+    if (!externalId || !title || !isWebUrl(url) || !fields.description) return null;
+    // Un formulario que no es un link web (relativo, "javascript:") no se guarda: se postula desde la publicación
+    const applyUrl = isWebUrl(fields.applyUrl) ? fields.applyUrl : null;
+    return { ...fields, externalId, title, url, applyUrl, description: fields.description };
 }
 
 const compact = (jobs: (IngestedJob | null)[]) => jobs.filter((item): item is IngestedJob => item !== null);

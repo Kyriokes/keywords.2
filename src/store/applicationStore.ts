@@ -10,7 +10,8 @@ export interface JobApplication {
   date: string;
   link?: string;
   jobTitle: string;
-  jobDescription: string;
+  /** La lista del panel no la trae (pesa mucho): se pide al abrir el detalle o al exportar. */
+  jobDescription?: string;
   detectedWords: string[];
   positionId?: string;
   /** Rol estandarizado del diccionario (ej: "Frontend Developer"); ausente si no se pudo clasificar. */
@@ -92,7 +93,7 @@ export const useApplicationStore = create<ApplicationState>((set, get) => ({
       // 2. Call Server Action
       const result = await createApplication({
           jobTitle: appData.jobTitle,
-          jobDescription: appData.jobDescription,
+          jobDescription: appData.jobDescription ?? "",
           link: appData.link,
           detectedWords: appData.detectedWords || [],
           positionTitle: appData.positionId,

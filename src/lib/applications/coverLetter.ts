@@ -78,7 +78,7 @@ export async function generateCoverLetterForApplication(
             jobDescription: true,
             coverLetter: { select: { text: true } },
             cvVariant: { select: { text: true } },
-            profile: { select: { user: { select: { name: true } } } },
+            profile: { select: { userId: true, user: { select: { name: true } } } },
         },
     });
     if (!application) return { ok: false, code: "NOT_FOUND", message: "La oferta ya no existe." };
@@ -86,10 +86,16 @@ export async function generateCoverLetterForApplication(
         return { ok: true, data: { text: application.coverLetter.text } };
     }
 
-    const recent = await prisma.coverLetter.count({
-        where: { profileId, applicationId: { not: null }, updatedAt: { gte: new Date(Date.now() - DAY_MS) } },
+    // Cada pedido a la IA se anota antes de hacerlo y después se cuenta: regenerar la misma carta también
+    // suma, y dos pedidos simultáneos no pueden pasar los dos con el último lugar libre
+    const userId = application.profile.userId;
+    const usage = await prisma.usageLog.create({ data: { userId, action: "GENERATE_COVER_LETTER" }, select: { id: true } });
+    const releaseUsage = () => prisma.usageLog.delete({ where: { id: usage.id } }).catch((error) => console.error("Cover letter usage not released:", error));
+    const recent = await prisma.usageLog.count({
+        where: { userId, action: "GENERATE_COVER_LETTER", createdAt: { gte: new Date(Date.now() - DAY_MS) } },
     });
-    if (recent >= LIMITS.coverLettersPerDay) {
+    if (recent > LIMITS.coverLettersPerDay) {
+        await releaseUsage();
         return {
             ok: false,
             code: "LIMIT_REACHED",
@@ -97,6 +103,25 @@ export async function generateCoverLetterForApplication(
         };
     }
 
+    const result = await writeLetter(profileId, applicationId, application);
+    if (!result.ok) await releaseUsage();
+    return result;
+}
+
+type LetterApplication = {
+    jobTitle: string;
+    company: string | null;
+    jobDescription: string;
+    cvVariant: { text: string } | null;
+    profile: { user: { name: string | null } };
+};
+
+/** Arma la carta con la IA, la revisa y la guarda. */
+async function writeLetter(
+    profileId: string,
+    applicationId: string,
+    application: LetterApplication
+): Promise<ActionResult<{ text: string }>> {
     const [activeCv, templates] = await Promise.all([
         application.cvVariant
             ? null

@@ -141,15 +141,16 @@ const getApplication = defineTool({
         "Detalle de una oferta: descripción, link del formulario, carta de presentación preparada, respuestas ya guardadas y la versión de CV adaptada si existe (si no, usá el CV activo de get_candidate).",
     input: z.object({ id: z.string().min(1) }),
     run: async (ctx: AgentContext, input) => {
-        await findOwnedApplication(ctx, input.id);
-        const application = await prisma.jobApplication.findUniqueOrThrow({
-            where: { id: input.id },
+        // Una sola consulta, siempre dentro del perfil del token
+        const application = await prisma.jobApplication.findFirst({
+            where: { id: input.id, profileId: ctx.profileId },
             include: {
                 coverLetter: { select: { text: true } },
                 answers: { select: { question: true, answer: true, templateId: true } },
                 cvVariant: { select: { id: true, name: true, text: true, pdfUrl: true } },
             },
         });
+        if (!application) throw new ToolError("No existe una oferta con ese id en tu cuenta.");
         const truncated = application.jobDescription.length > DESCRIPTION_PREVIEW;
         return {
             id: application.id,

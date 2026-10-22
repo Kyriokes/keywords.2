@@ -19,9 +19,15 @@ interface Dictionary {
 // Los cambios hechos desde /admin se ven en esta instancia al momento y en las demás al vencer.
 const CACHE_TTL_MS = 60_000;
 let cached: { dictionary: Dictionary; loadedAt: number } | null = null;
+// La lectura en curso: los pedidos que llegan mientras tanto la esperan en vez de leer todo otra vez
+let loading: Promise<Dictionary> | null = null;
+// Cambia con cada invalidación: una lectura que empezó antes no pisa lo que se invalidó en el medio
+let generation = 0;
 
 export function invalidateDictionary() {
     cached = null;
+    loading = null;
+    generation++;
 }
 
 export function keywordName(keyword: { displayName: string | null; canonicalText: string }): string {
@@ -33,7 +39,21 @@ export async function getDictionary(): Promise<Dictionary> {
     if (cached && Date.now() - cached.loadedAt < CACHE_TTL_MS) {
         return cached.dictionary;
     }
+    if (!loading) {
+        const started = generation;
+        loading = loadDictionary()
+            .then((dictionary) => {
+                if (started === generation) cached = { dictionary, loadedAt: Date.now() };
+                return dictionary;
+            })
+            .finally(() => {
+                if (started === generation) loading = null;
+            });
+    }
+    return loading;
+}
 
+async function loadDictionary(): Promise<Dictionary> {
     const aliases = await prisma.keywordAlias.findMany({
         where: { keyword: { isApproved: true, isBlocked: false } },
         select: {
@@ -52,8 +72,6 @@ export async function getDictionary(): Promise<Dictionary> {
             category: toKeywordCategory(alias.keyword.category),
         });
     }
-
-    cached = { dictionary, loadedAt: Date.now() };
     return dictionary;
 }
 

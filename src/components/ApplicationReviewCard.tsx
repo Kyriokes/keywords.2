@@ -69,8 +69,8 @@ export function ApplicationReviewCard() {
                 "Oferta Laboral", // Assuming generic title if not stored, but we should use data.jobTitle if it's the raw title? 
                 // Wait, data.jobTitle in PendingApplication might be the *detected* position if we overwrote it.
                 // data.jobDescription is the raw text.
-                data.jobDescription, 
-                { 
+                data.jobDescription ?? "",
+                {
                     excludeProviders: newExcluded,
                     autoSelect: true // We assume autoSelect logic was desired or we re-use detection
                 }

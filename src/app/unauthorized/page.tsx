@@ -3,7 +3,7 @@ import Link from "next/link";
 import { ShieldAlert } from "lucide-react";
 import { primaryButton } from "@/components/landing/styles";
 
-export const metadata: Metadata = { title: "Acceso denegado" };
+export const metadata: Metadata = { title: "Acceso denegado", robots: { index: false, follow: false } };
 
 export default function UnauthorizedPage() {
   return (

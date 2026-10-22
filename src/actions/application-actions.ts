@@ -3,13 +3,10 @@
 import { auth } from "@/auth"
 import prisma from "@/lib/prisma"
 import { revalidatePath } from "next/cache"
+import type { Prisma } from "@prisma/client"
 import { providerManager } from "@/lib/ia/providerManager"
 import { keywordName } from "@/lib/keywords/dictionary"
-import {
-  applicationInclude,
-  createApplicationForProfile,
-  type ApplicationWithRelations,
-} from "@/lib/applications/create"
+import { createApplicationForProfile } from "@/lib/applications/create"
 import { parseApplicationStatus, type ActionResult } from "@/lib/validation"
 
 export interface CreateApplicationData {
@@ -29,8 +26,42 @@ export interface CreateApplicationData {
   applyMode?: string
 }
 
+// Lo que muestra el panel: todo menos la descripción, que puede pesar decenas de KB por oferta
+// y con cientos de ofertas hacía lenta cada visita. Se pide aparte al abrir el detalle.
+const listSelect = {
+  id: true,
+  date: true,
+  jobTitle: true,
+  link: true,
+  status: true,
+  provider: true,
+  company: true,
+  applyUrl: true,
+  applyMode: true,
+  source: true,
+  score: true,
+  notes: true,
+  skipReason: true,
+  skipDetail: true,
+  seniority: true,
+  originalPositionTitle: true,
+  keywords: { select: { keyword: { select: { isBlocked: true, displayName: true, canonicalText: true } } } },
+  position: { select: { title: true } },
+  canonicalPosition: { select: { name: true } },
+} satisfies Prisma.JobApplicationSelect
+
+type ListedApplication = Prisma.JobApplicationGetPayload<{ select: typeof listSelect }>
+
+async function requireProfileId(): Promise<string> {
+  const session = await auth()
+  if (!session?.user?.id) throw new Error("Unauthorized")
+  const profile = await prisma.profile.findUnique({ where: { userId: session.user.id }, select: { id: true } })
+  if (!profile) throw new Error("Profile not found")
+  return profile.id
+}
+
 // Formato que espera el store del cliente
-function toStoreApplication(app: ApplicationWithRelations) {
+function toStoreApplication(app: ListedApplication & { jobDescription?: string }) {
   return {
     id: app.id,
     date: app.date.toISOString().split("T")[0],
@@ -88,17 +119,32 @@ export async function getApplications() {
 
     const profile = await prisma.profile.findUnique({
       where: { userId: session.user.id },
-      include: {
+      select: {
         applications: {
             orderBy: { date: 'desc' },
-            include: applicationInclude
+            select: listSelect
         }
       }
     })
 
     if (!profile) return []
 
-    return profile.applications.map(toStoreApplication)
+    return profile.applications.map((app) => toStoreApplication(app))
+}
+
+/** Descripción de una postulación del usuario, para el detalle del panel; null si no es suya o no existe. */
+export async function getApplicationDescription(id: string): Promise<string | null> {
+  const profileId = await requireProfileId()
+  if (typeof id !== "string" || !id) return null
+  const app = await prisma.jobApplication.findFirst({ where: { id, profileId }, select: { jobDescription: true } })
+  return app?.jobDescription ?? null
+}
+
+/** Descripciones de todas las postulaciones del usuario, por id: solo para exportar el Excel. */
+export async function getApplicationDescriptions(): Promise<Record<string, string>> {
+  const profileId = await requireProfileId()
+  const apps = await prisma.jobApplication.findMany({ where: { profileId }, select: { id: true, jobDescription: true } })
+  return Object.fromEntries(apps.map((app) => [app.id, app.jobDescription]))
 }
 
 export async function deleteApplication(id: string) {

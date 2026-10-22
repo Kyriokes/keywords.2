@@ -5,7 +5,8 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Lock } from "lucide-react";
 
-export const metadata: Metadata = { title: "Iniciar sesión" };
+// Una página con un botón no aporta en un buscador; los links que salen de acá sí se siguen
+export const metadata: Metadata = { title: "Iniciar sesión", robots: { index: false, follow: true } };
 
 export default function LoginPage() {
   return (

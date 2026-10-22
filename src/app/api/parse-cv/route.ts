@@ -6,9 +6,12 @@ import mammoth from 'mammoth';
 import { auth } from '@/auth';
 import { isRateLimited } from '@/lib/rateLimit';
 import { detectKeywords } from '@/lib/keywords/dictionary';
+import { withTimeout } from '@/lib/timeout';
 
 const MAX_FILE_SIZE = 5 * 1024 * 1024; // 5MB
 const MAX_UPLOADS_PER_MINUTE = 10;
+// Un PDF o DOCX malformado puede dejar al lector trabado: pasado este tiempo se responde con error
+const PARSE_TIMEOUT_MS = 20_000;
 
 // Forma mínima de lo que usamos de pdf2json (el módulo se resuelve distinto según ESM/CJS)
 interface PdfTextRun { T?: string }
@@ -137,12 +140,12 @@ export async function POST(req: NextRequest) {
             if (buffer.length === 0) {
                 return NextResponse.json({ error: 'Empty PDF payload' }, { status: 400 });
             }
-            const { text: rawText } = await parsePdfWithPdf2json(buffer);
+            const { text: rawText } = await withTimeout(parsePdfWithPdf2json(buffer), PARSE_TIMEOUT_MS, 'El lector de PDF');
             text = rawText
                 .replace(/\n\s*\n/g, '\n')
                 .replace(/[ \t]+/g, ' ');
         } else if (fileType === 'docx') {
-            const result = await mammoth.extractRawText({ buffer });
+            const result = await withTimeout(mammoth.extractRawText({ buffer }), PARSE_TIMEOUT_MS, 'El lector de DOCX');
             text = result.value;
         } else {
             return NextResponse.json(

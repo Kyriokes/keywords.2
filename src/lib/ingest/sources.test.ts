@@ -29,6 +29,36 @@ describe("htmlToText", () => {
     it("descarta scripts y estilos", () => {
         expect(htmlToText("<style>p{}</style><p>Texto</p><script>alert(1)</script>")).toBe("Texto");
     });
+
+    it("una entidad numérica fuera de rango no rompe la lectura del aviso", () => {
+        // String.fromCodePoint tira RangeError con estos valores: antes se caía el portal entero
+        expect(htmlToText("<p>Hola &#99999999; y &#x110000; chau</p>")).toBe("Hola &#99999999; y &#x110000; chau");
+    });
+
+    it("no deja caracteres nulos, que la base no puede guardar", () => {
+        expect(htmlToText("<p>React&#0; y Node\u0000</p>")).toBe("React y Node");
+    });
+});
+
+describe("links de postulación", () => {
+    it("un formulario que no es http(s) se descarta y la oferta queda con su publicación", () => {
+        const [job] = parseRemoteOk([
+            { legal: "API terms" },
+            { id: "9", position: "Backend", company: "Beta", url: "https://remoteok.com/9", apply_url: "javascript:alert(1)", description: "<b>Go</b>" },
+        ]);
+        expect(job).toMatchObject({ externalId: "9", applyUrl: null });
+    });
+
+    it("un formulario relativo o con espacios no se guarda", () => {
+        const jobs = parseLever(
+            [
+                { id: "a", text: "Dev", hostedUrl: "https://jobs.lever.co/acme/a", applyUrl: "/acme/a/apply", descriptionPlain: "React" },
+                { id: "b", text: "Dev", hostedUrl: "https://jobs.lever.co/acme/b", applyUrl: "https://jobs.lever.co/acme/b/apply", descriptionPlain: "React" },
+            ],
+            "acme"
+        );
+        expect(jobs.map((job) => job.applyUrl)).toEqual([null, "https://jobs.lever.co/acme/b/apply"]);
+    });
 });
 
 describe("parsers", () => {

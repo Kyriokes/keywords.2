@@ -7,7 +7,7 @@ const db = vi.hoisted(() => ({
     cV: { findFirst: vi.fn() },
     jobApplication: { findMany: vi.fn(), findUnique: vi.fn(), update: vi.fn() },
     cVKeyword: { findMany: vi.fn() },
-    jobSearchSettings: { update: vi.fn() },
+    jobSearchSettings: { update: vi.fn(), findUnique: vi.fn(), updateMany: vi.fn() },
 }));
 const create = vi.hoisted(() => vi.fn());
 const fetchAggregator = vi.hoisted(() => vi.fn());
@@ -40,7 +40,7 @@ vi.mock("@/lib/positions/dictionary", () => ({
 vi.mock("./sources", async (importOriginal) => ({ ...(await importOriginal<typeof import("./sources")>()), fetchAggregator, fetchAtsBoard }));
 vi.mock("./record", () => record);
 
-import { runAndRecord, runJobSearch, type SearchSettingsInput } from "./run";
+import { runAndRecord, runJobSearch, runSavedSearch, type SearchSettingsInput } from "./run";
 
 const NO_PREFERENCES = { avoidTechNames: [], avoidTechKeywordIds: new Set<string>(), avoidCompanyKeys: new Set<string>(), avoidPhrases: [] };
 
@@ -345,5 +345,44 @@ describe("runAndRecord", () => {
 
         await expect(runAndRecord("profile-1", settings)).resolves.toMatchObject({ created: 2 });
         expect(db.jobSearchSettings.update).toHaveBeenCalled();
+    });
+});
+
+describe("runSavedSearch", () => {
+    beforeEach(() => {
+        db.jobSearchSettings.findUnique.mockResolvedValue({ ...settings, profileId: "profile-1", lastRunAt: null });
+    });
+
+    it("si llegan dos pedidos juntos, busca uno solo", async () => {
+        // La base deja reservar la corrida a uno solo: el segundo encuentra la hora ya tomada
+        db.jobSearchSettings.updateMany.mockResolvedValueOnce({ count: 1 }).mockResolvedValueOnce({ count: 0 });
+
+        const [first, second] = await Promise.all([runSavedSearch("profile-1", "AGENT"), runSavedSearch("profile-1", "AGENT")]);
+
+        expect(fetchAggregator).toHaveBeenCalledTimes(1);
+        expect([first.ok, second.ok].sort()).toEqual([false, true]);
+        expect([first, second].find((result) => !result.ok)).toMatchObject({ code: "TOO_SOON" });
+    });
+
+    it("reserva la corrida solo si la última fue hace más de una hora", async () => {
+        db.jobSearchSettings.updateMany.mockResolvedValue({ count: 1 });
+
+        await runSavedSearch("profile-1", "MANUAL");
+
+        const [{ where }] = db.jobSearchSettings.updateMany.mock.calls[0];
+        expect(where.profileId).toBe("profile-1");
+        expect(where.OR).toEqual([{ lastRunAt: null }, { lastRunAt: { lt: expect.any(Date) } }]);
+        expect(Date.now() - where.OR[1].lastRunAt.lt.getTime()).toBeGreaterThanOrEqual(60 * 60 * 1000 - 1000);
+    });
+
+    it("si la búsqueda se rompe, devuelve la reserva para poder reintentar", async () => {
+        const lastRunAt = new Date(Date.now() - 2 * 60 * 60 * 1000);
+        db.jobSearchSettings.findUnique.mockResolvedValue({ ...settings, profileId: "profile-1", lastRunAt });
+        db.jobSearchSettings.updateMany.mockResolvedValue({ count: 1 });
+        db.position.findMany.mockRejectedValue(new Error("db down"));
+
+        await expect(runSavedSearch("profile-1", "MANUAL")).rejects.toThrow("db down");
+
+        expect(db.jobSearchSettings.updateMany).toHaveBeenLastCalledWith({ where: { profileId: "profile-1" }, data: { lastRunAt } });
     });
 });

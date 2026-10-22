@@ -7,6 +7,7 @@ import {
     mediaAssetSchema,
     parseApplicationDate,
     parseApplicationStatus,
+    uploadCvSchema,
 } from "./validation";
 
 const NOW = new Date("2026-10-13T15:00:00.000Z");
@@ -55,6 +56,21 @@ describe("createApplicationSchema", () => {
         const parsed = createApplicationSchema.parse({ ...base, date: "no es fecha", status: "CONTRATADO" });
         expect(parsed.date).toBeUndefined();
         expect(parsed.status).toBeUndefined();
+    });
+
+    it("saca los caracteres nulos, que PostgreSQL no puede guardar", () => {
+        const parsed = createApplicationSchema.parse({ ...base, jobTitle: "Front\u0000end", jobDescription: "React\u0000 y Node", notes: "a\u0000b" });
+        expect(parsed.jobTitle).toBe("Frontend");
+        expect(parsed.jobDescription).toBe("React y Node");
+        expect(parsed.notes).toBe("ab");
+    });
+});
+
+describe("uploadCvSchema", () => {
+    it("saca los caracteres nulos que deja la lectura de algunos PDF", () => {
+        const parsed = uploadCvSchema.parse({ name: "CV\u0000", text: "Sergio\u0000 Ferrari", keywords: [] });
+        expect(parsed.name).toBe("CV");
+        expect(parsed.text).toBe("Sergio Ferrari");
     });
 });
 

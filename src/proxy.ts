@@ -1,16 +1,13 @@
 import NextAuth from "next-auth";
 import authConfig from "./auth.config";
 import {
-  publicRoutes,
+  isPublicPath,
+  isUnder,
   protectedRoutes,
   UNAUTHORIZED_REDIRECT,
 } from "./routes.config";
 
 const { auth } = NextAuth(authConfig);
-
-// Coincide con la ruta exacta o con sus subrutas ("/user" no debe matchear "/users")
-const isUnder = (pathname: string, route: string) =>
-  pathname === route || pathname.startsWith(`${route}/`);
 
 export default auth((req) => {
   const { nextUrl } = req;
@@ -21,10 +18,7 @@ export default auth((req) => {
 
   // 1. Check if the route is explicitly public
   // We can skip authentication for public routes like '/', '/login', '/api/auth'
-  const isPublicRoute =
-    publicRoutes.includes(pathname) || isUnder(pathname, "/api/auth");
-
-  if (isPublicRoute) {
+  if (isPublicPath(pathname)) {
     return;
   }
 

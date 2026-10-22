@@ -1,5 +1,5 @@
 import { authenticateAgent } from "@/lib/agent/auth";
-import { handleMcpMessage, type JsonRpcResponse } from "@/lib/agent/mcp";
+import { MAX_BATCH, handleMcpPayload } from "@/lib/agent/mcp";
 import { SERVER_INSTRUCTIONS, SERVER_VERSION, agentTools } from "@/lib/agent/tools";
 import { isRateLimited } from "@/lib/rateLimit";
 
@@ -11,6 +11,8 @@ const RATE_LIMIT = { max: 120, windowMs: 60_000 };
 
 const SERVER_INFO = { name: "keywords", version: SERVER_VERSION, instructions: SERVER_INSTRUCTIONS };
 
+const tooLarge = () => Response.json({ error: "Pedido demasiado grande." }, { status: 413 });
+
 export async function POST(request: Request) {
     const agent = await authenticateAgent(request);
     if (!agent) {
@@ -20,14 +22,14 @@ export async function POST(request: Request) {
         );
     }
 
-    if (isRateLimited(`mcp:${agent.tokenId}`, RATE_LIMIT.max, RATE_LIMIT.windowMs)) {
-        return Response.json({ error: "Demasiados pedidos, esperá un minuto." }, { status: 429 });
-    }
+    const rateKey = `mcp:${agent.tokenId}`;
+    const tooMany = () => Response.json({ error: "Demasiados pedidos, esperá un minuto." }, { status: 429 });
+    if (isRateLimited(rateKey, RATE_LIMIT.max, RATE_LIMIT.windowMs)) return tooMany();
 
+    // Corte por el tamaño declarado antes de leer el cuerpo en memoria
+    if (Number(request.headers.get("content-length")) > MAX_BODY_BYTES) return tooLarge();
     const body = await request.text();
-    if (body.length > MAX_BODY_BYTES) {
-        return Response.json({ error: "Pedido demasiado grande." }, { status: 413 });
-    }
+    if (Buffer.byteLength(body) > MAX_BODY_BYTES) return tooLarge();
 
     let message: unknown;
     try {
@@ -36,15 +38,13 @@ export async function POST(request: Request) {
         return Response.json({ jsonrpc: "2.0", id: null, error: { code: -32700, message: "Parse error" } }, { status: 400 });
     }
 
-    // Versiones viejas del protocolo permiten mandar varios mensajes juntos
-    if (Array.isArray(message)) {
-        const responses = (await Promise.all(
-            message.map((item) => handleMcpMessage(item, agent, agentTools, SERVER_INFO))
-        )).filter((response): response is JsonRpcResponse => response !== null);
-        return responses.length ? Response.json(responses) : new Response(null, { status: 202 });
+    // Cada mensaje de un lote cuenta para el límite, no el lote entero como uno solo (el primero ya se contó)
+    if (Array.isArray(message) && message.length > 1) {
+        const extra = Math.min(message.length, MAX_BATCH + 1) - 1;
+        if (isRateLimited(rateKey, RATE_LIMIT.max, RATE_LIMIT.windowMs, extra)) return tooMany();
     }
 
-    const response = await handleMcpMessage(message, agent, agentTools, SERVER_INFO);
+    const response = await handleMcpPayload(message, agent, agentTools, SERVER_INFO);
     return response ? Response.json(response) : new Response(null, { status: 202 });
 }
 

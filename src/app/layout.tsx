@@ -1,4 +1,4 @@
-import type { Metadata } from "next";
+import type { Metadata, Viewport } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
 import "./globals.css";
 import { Navbar } from "@/components/Navbar";
@@ -7,6 +7,7 @@ import { Toaster } from "sonner";
 import { ReviewOverlayWrapper } from "@/components/ReviewOverlayWrapper";
 import { auth } from "@/auth";
 import { SEO } from "@/components/landing/copy";
+import { SITE_NAME, SITE_URL, THEME_DARK, THEME_LIGHT } from "@/lib/site";
 
 const geistSans = Geist({
   variable: "--font-geist-sans",
@@ -18,20 +19,21 @@ const geistMono = Geist_Mono({
   subsets: ["latin"],
 });
 
-// Dominio de producción en Vercel; fuera de Vercel se usa el público conocido
-const siteUrl = process.env.VERCEL_PROJECT_PRODUCTION_URL
-  ? `https://${process.env.VERCEL_PROJECT_PRODUCTION_URL}`
-  : "https://kwtools.vercel.app";
-
 export const metadata: Metadata = {
-  metadataBase: new URL(siteUrl),
-  title: { default: "KeyWords", template: "%s | KeyWords" },
+  metadataBase: new URL(SITE_URL),
+  title: { default: SITE_NAME, template: `%s | ${SITE_NAME}` },
   description: SEO.description,
-  applicationName: "KeyWords",
+  applicationName: SITE_NAME,
+  category: "technology",
+  creator: "Sergio Ferrari",
+  authors: [{ name: "Sergio Ferrari", url: "https://github.com/kyriokes" }],
+  // Sin esto el navegador del celular convierte números sueltos en links de llamada
+  formatDetection: { telephone: false, email: false, address: false },
   openGraph: {
     type: "website",
     locale: "es_AR",
-    siteName: "KeyWords",
+    siteName: SITE_NAME,
+    url: "/",
     title: SEO.title,
     description: SEO.description,
   },
@@ -42,6 +44,14 @@ export const metadata: Metadata = {
   },
 };
 
+export const viewport: Viewport = {
+  colorScheme: "light dark",
+  themeColor: [
+    { media: "(prefers-color-scheme: light)", color: THEME_LIGHT },
+    { media: "(prefers-color-scheme: dark)", color: THEME_DARK },
+  ],
+};
+
 export default async function RootLayout({
   children,
 }: {
@@ -50,7 +60,7 @@ export default async function RootLayout({
   const session = await auth();
 
   return (
-    <html lang="es" className={`${geistSans.variable} ${geistMono.variable}`}>
+    <html lang="es-AR" className={`${geistSans.variable} ${geistMono.variable}`}>
       <body className="antialiased" suppressHydrationWarning>
         <a
           href="#contenido"

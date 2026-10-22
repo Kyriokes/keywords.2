@@ -3,7 +3,7 @@ import { PackageOpen, Download } from 'lucide-react';
 import { useRef, useState } from 'react';
 import { toast } from 'sonner';
 import { cn } from '@/lib/utils';
-import { importFromExcel, exportToExcel } from '@/lib/excel';
+import { getApplicationDescriptions } from '@/actions/application-actions';
 import { useApplicationStore } from '@/store/applicationStore';
 import { useCvStore } from '@/store/cvStore';
 import { Button } from '@/components/ui/button';
@@ -42,6 +42,8 @@ export function LoadSaveDropzone({ onFileSelected }: LoadSaveDropzoneProps) {
 
     try {
       setIsLoading(true);
+      // La librería de Excel pesa cientos de KB: se descarga recién cuando se usa
+      const { importFromExcel } = await import('@/lib/excel');
       const data = await importFromExcel(file);
       
       // Update stores
@@ -116,26 +118,38 @@ export function LoadSaveDropzone({ onFileSelected }: LoadSaveDropzoneProps) {
     }
   };
 
-  const handleDownload = (e: React.MouseEvent) => {
+  const handleDownload = async (e: React.MouseEvent) => {
     e.stopPropagation(); // Prevent triggering the dropzone click
     try {
       const { applications } = useApplicationStore.getState();
       const { cvs } = useCvStore.getState();
-      
+
       const activeCv = cvs.find(c => c.isPrimary) || cvs[0];
       const keywords = activeCv?.keywords || [];
       const rawText = activeCv?.text || '';
-      
+
       if (applications.length === 0 && keywords.length === 0 && !rawText) {
         toast.warning("No hay datos para exportar.");
         return;
       }
 
-      exportToExcel(applications, keywords, rawText);
+      setIsLoading(true);
+      // La lista del panel no trae las descripciones: se piden solo para el archivo
+      const [{ exportToExcel }, descriptions] = await Promise.all([
+        import('@/lib/excel'),
+        applications.length ? getApplicationDescriptions() : Promise.resolve({} as Record<string, string>)
+      ]);
+      exportToExcel(
+        applications.map((app) => ({ ...app, jobDescription: app.jobDescription ?? descriptions[app.id] ?? '' })),
+        keywords,
+        rawText
+      );
       toast.success("Archivo Excel generado correctamente.");
     } catch (error) {
       console.error(error);
       toast.error("Error al generar el archivo Excel.");
+    } finally {
+      setIsLoading(false);
     }
   };
 

@@ -176,8 +176,21 @@ describe("agentTools", () => {
         const result = await callTool("get_application", { id: "app-de-otro" });
 
         expect(result.isError).toBe(true);
-        expect(db.jobApplication.findFirst).toHaveBeenCalledWith({ where: { id: "app-de-otro", profileId: "profile-1" } });
+        expect(db.jobApplication.findFirst).toHaveBeenCalledWith(expect.objectContaining({ where: { id: "app-de-otro", profileId: "profile-1" } }));
         expect(db.jobApplication.findUniqueOrThrow).not.toHaveBeenCalled();
+    });
+
+    it("get_application trae el detalle con una sola consulta, dentro del perfil", async () => {
+        db.jobApplication.findFirst.mockResolvedValue({
+            id: "app-1", jobTitle: "Dev", company: "Acme", status: "APPROVED", link: "https://acme.com/1", applyUrl: null,
+            applyMode: "EXTERNAL_FORM", score: 70, notes: null, jobDescription: "React", coverLetter: null, answers: [], cvVariant: null,
+        });
+
+        const result = JSON.parse((await callTool("get_application", { id: "app-1" })).text);
+
+        expect(db.jobApplication.findFirst).toHaveBeenCalledTimes(1);
+        expect(db.jobApplication.findUniqueOrThrow).not.toHaveBeenCalled();
+        expect(result).toMatchObject({ id: "app-1", applyUrl: "https://acme.com/1", jobDescription: "React", coverLetter: null });
     });
 
     it("no registra resultados sobre una oferta de otro perfil", async () => {

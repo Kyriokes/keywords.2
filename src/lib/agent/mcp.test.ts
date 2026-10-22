@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
 import { z } from "zod";
-import { ToolError, defineTool, handleMcpMessage } from "./mcp";
+import { MAX_BATCH, ToolError, defineTool, handleMcpMessage, handleMcpPayload } from "./mcp";
 
 type Ctx = { user: string };
 
@@ -78,5 +78,48 @@ describe("handleMcpMessage", () => {
         expect((await call({ jsonrpc: "2.0", id: 9, method: "resources/list" }))?.error?.code).toBe(-32601);
         expect((await call({ jsonrpc: "2.0", id: 10, method: "tools/call", params: { name: "nope" } }))?.error?.code).toBe(-32602);
         expect((await call({ method: "x", id: 11 }))?.error?.code).toBe(-32600);
+    });
+});
+
+describe("handleMcpPayload", () => {
+    const echoCall = (id: number) => ({ jsonrpc: "2.0", id, method: "tools/call", params: { name: "echo", arguments: { text: `t${id}` } } });
+
+    it("un lote demasiado grande se rechaza entero, sin ejecutar ninguna herramienta", async () => {
+        const run = vi.fn(async () => ({}));
+        const counted = [defineTool({ name: "echo", description: "", input: z.object({ text: z.string() }), run })];
+
+        const response = await handleMcpPayload(Array.from({ length: MAX_BATCH + 1 }, (_, i) => echoCall(i)), { user: "u1" }, counted, info);
+
+        expect(run).not.toHaveBeenCalled();
+        expect(response).toMatchObject({ jsonrpc: "2.0", id: null, error: { code: -32600 } });
+    });
+
+    it("procesa un lote de a un mensaje, en orden, y omite las notificaciones", async () => {
+        const order: string[] = [];
+        const slow = defineTool({
+            name: "echo",
+            description: "",
+            input: z.object({ text: z.string() }),
+            run: async (_ctx: Ctx, input) => {
+                order.push(`start ${input.text}`);
+                await new Promise((resolve) => setTimeout(resolve, input.text === "t1" ? 20 : 0));
+                order.push(`end ${input.text}`);
+                return input.text;
+            },
+        });
+
+        const response = await handleMcpPayload([echoCall(1), { jsonrpc: "2.0", method: "notifications/initialized" }, echoCall(2)], { user: "u1" }, [slow], info);
+
+        expect(order).toEqual(["start t1", "end t1", "start t2", "end t2"]);
+        expect((response as { id: number }[]).map((item) => item.id)).toEqual([1, 2]);
+    });
+
+    it("un lote vacío es un pedido inválido y uno de solo notificaciones no lleva respuesta", async () => {
+        expect(await handleMcpPayload([], { user: "u1" }, tools, info)).toMatchObject({ error: { code: -32600 } });
+        expect(await handleMcpPayload([{ jsonrpc: "2.0", method: "notifications/initialized" }], { user: "u1" }, tools, info)).toBeNull();
+    });
+
+    it("un mensaje suelto se procesa como siempre", async () => {
+        expect(await handleMcpPayload(echoCall(3), { user: "u1" }, tools, info)).toMatchObject({ id: 3 });
     });
 });
