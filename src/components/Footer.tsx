@@ -8,7 +8,14 @@ export function Footer() {
 
                 <p>
                     Hecho con ❤️ por{" "}
-                    <span className="font-medium">Sergio Ferrari</span>
+                    <a
+                        href="https://portfoliosergiofb.vercel.app/es"
+                        target="_blank"
+                        rel="noopener"
+                        className="font-medium hover:underline"
+                    >
+                        Sergio Ferrari Bryce
+                    </a>
                 </p>
 
                 <div className="flex justify-center gap-4">
