@@ -427,7 +427,7 @@ export async function runJobSearch(
         }
 
         const keywords = await detectKeywords(description);
-        const score = computeMatchScore(keywords.map((keyword) => keyword.id), cvKeywordIds);
+        const score = computeMatchScore(keywords, cvKeywordIds);
         if (score === null || score < eligibility.minScore) {
             reject(score === null ? "Sin keywords para comparar con el CV" : `Match ${score}% (mínimo ${eligibility.minScore}%)`, score);
             continue;

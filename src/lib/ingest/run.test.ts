@@ -20,13 +20,14 @@ vi.mock("@/lib/prisma", () => ({ default: db }));
 vi.mock("@/lib/applications/create", () => ({ createApplicationForProfile: create }));
 vi.mock("@/lib/preferences/preferences", () => preferences);
 vi.mock("@/lib/applications/skip", () => skip);
-// Cada keyword es una palabra en mayúsculas: "REACT NODE" → react, node. Las que terminan en "_TOOL" son herramientas.
+// Cada keyword es una palabra en mayúsculas: "REACT NODE" → react, node. Las que terminan en "_TOOL" son herramientas
+// y las que terminan en "_SOFT", habilidades blandas.
 vi.mock("@/lib/keywords/dictionary", () => ({
     detectKeywords: async (text: string) =>
         (text.match(/\b[A-Z][A-Z_]+\b/g) ?? []).map((word) => ({
             id: word.toLowerCase(),
             name: word,
-            category: word.endsWith("_TOOL") ? "HERRAMIENTA" : "LENGUAJE",
+            category: word.endsWith("_TOOL") ? "HERRAMIENTA" : word.endsWith("_SOFT") ? "OTRA" : "LENGUAJE",
         })),
 }));
 vi.mock("@/lib/positions/dictionary", () => ({
@@ -136,6 +137,15 @@ describe("runJobSearch", () => {
             // Las herramientas no cuentan como stack
             ["remotive:7", "PASSES", null],
         ]);
+    });
+
+    it("las habilidades blandas del aviso no bajan el match", async () => {
+        fetchAggregator.mockResolvedValue([job("8", { description: "REACT NODE TEAMWORK_SOFT COMMUNICATION_SOFT JAVA" })]);
+
+        const result = await runJobSearch("profile-1", settings, new Map(), { dryRun: true });
+
+        // React y Node de React, Node y Java: el 67%, no el 40% que daría contando las blandas
+        expect(result.decisions.map((decision) => [decision.status, decision.score])).toEqual([["PASSES", 67]]);
     });
 
     it("registra todas las ofertas que llegaron con su decisión y cuenta por fuente", async () => {

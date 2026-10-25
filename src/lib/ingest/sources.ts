@@ -489,6 +489,38 @@ export async function getText(url: string): Promise<string> {
     return response.text();
 }
 
+type GetJson = (url: string) => Promise<unknown>;
+
+const GET_ON_BOARD_EXPAND = `&expand=["company","location_cities","location_regions","location_tenants","seniority"]`;
+/**
+ * Categorías de Get on Board que se leen enteras. Buscar el puesto en inglés trae solo una página y se pierde
+ * lo que tiene el título en castellano ("Desarrollador/a Full-Stack Jr"); en estas está casi todo lo de desarrollo.
+ */
+const GET_ON_BOARD_CATEGORIES = ["programming", "machine-learning-ai"];
+/** Páginas de 100 por categoría como máximo (Programación tiene unas 4): un tope por si el portal cambia. */
+const GET_ON_BOARD_MAX_PAGES = 6;
+
+async function getOnBoardCategory(category: string, get: GetJson): Promise<unknown[]> {
+    const page = (number: number) =>
+        get(`https://www.getonbrd.com/api/v0/categories/${category}/jobs?per_page=100&page=${number}${GET_ON_BOARD_EXPAND}`);
+    const first = await page(1);
+    const meta = isObject(first) && isObject(first.meta) ? first.meta : {};
+    const total = Math.min(typeof meta.total_pages === "number" ? meta.total_pages : 1, GET_ON_BOARD_MAX_PAGES);
+    const rest = await Promise.all(Array.from({ length: Math.max(0, total - 1) }, (_, index) => page(index + 2)));
+    return [first, ...rest];
+}
+
+/** Get on Board: cada puesto buscado (sirve para cualquier rol) y las categorías de desarrollo enteras. */
+export async function fetchGetOnBoard(terms: string[], get: GetJson): Promise<IngestedJob[]> {
+    const [searches, ...categories] = await Promise.all([
+        Promise.all(
+            terms.map((term) => get(`https://www.getonbrd.com/api/v0/search/jobs?query=${encodeURIComponent(term)}&per_page=50${GET_ON_BOARD_EXPAND}`))
+        ),
+        ...GET_ON_BOARD_CATEGORIES.map((category) => getOnBoardCategory(category, get)),
+    ]);
+    return [...searches, ...categories.flat()].flatMap(parseGetOnBoard);
+}
+
 /** Ofertas recientes de un portal agregador. `terms` son los puestos buscados. */
 export async function fetchAggregator(source: AggregatorSource, terms: string[]): Promise<IngestedJob[]> {
     switch (source) {
@@ -508,17 +540,8 @@ export async function fetchAggregator(source: AggregatorSource, terms: string[])
             );
             return pages.flatMap(parseHimalayas);
         }
-        case "getonbrd": {
-            const results = await Promise.all(
-                terms.map((term) =>
-                    getJson(
-                        `https://www.getonbrd.com/api/v0/search/jobs?query=${encodeURIComponent(term)}&per_page=50` +
-                            `&expand=["company","location_cities","location_regions","location_tenants","seniority"]`
-                    )
-                )
-            );
-            return results.flatMap(parseGetOnBoard);
-        }
+        case "getonbrd":
+            return fetchGetOnBoard(terms, getJson);
         case "jobicy": {
             const results = await Promise.all(
                 ["latam", "argentina"].map((geo) =>

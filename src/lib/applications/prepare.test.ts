@@ -5,14 +5,32 @@ import { WRITING_GUIDE } from "./voice";
 const LETTER = "Estimado equipo:\n\n" + "Me interesa mucho el puesto y creo que mi experiencia encaja. ".repeat(6) + "\n\nSaludos,\nAna";
 
 describe("computeMatchScore", () => {
-    it("es el porcentaje de keywords de la oferta que están en el CV", () => {
-        expect(computeMatchScore(["a", "b", "c", "d"], ["a", "c", "z"])).toBe(50);
-        expect(computeMatchScore(["a", "a", "b"], ["a"])).toBe(50);
+    const tech = (...ids: string[]) => ids.map((id) => ({ id, category: "LENGUAJE" }));
+
+    it("es el porcentaje de tecnologías de la oferta que están en el CV", () => {
+        expect(computeMatchScore(tech("a", "b", "c", "d"), ["a", "c", "z"])).toBe(50);
+        expect(computeMatchScore(tech("a", "a", "b"), ["a"])).toBe(50);
+    });
+
+    it("no cuenta habilidades blandas ni metodologías: casi ningún CV las nombra", () => {
+        const offer = [
+            { id: "react", category: "FRAMEWORK" },
+            { id: "node", category: "LENGUAJE" },
+            { id: "comunicacion", category: "OTRA" },
+            { id: "code-review", category: "METODOLOGIA" },
+        ];
+        expect(computeMatchScore(offer, ["react", "node"])).toBe(100);
+    });
+
+    it("cuenta las keywords que todavía no tienen categoría (las nuevas, sin verificar)", () => {
+        expect(computeMatchScore([{ id: "react", category: "FRAMEWORK" }, { id: "nueva", category: null }], ["react"])).toBe(50);
     });
 
     it("devuelve null si falta la oferta o el CV para comparar", () => {
         expect(computeMatchScore([], ["a"])).toBeNull();
-        expect(computeMatchScore(["a"], [])).toBeNull();
+        expect(computeMatchScore(tech("a"), [])).toBeNull();
+        // Una oferta que solo nombra habilidades blandas no dice nada del stack
+        expect(computeMatchScore([{ id: "comunicacion", category: "OTRA" }], ["comunicacion"])).toBeNull();
     });
 });
 
