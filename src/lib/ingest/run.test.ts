@@ -121,7 +121,7 @@ describe("runJobSearch", () => {
         expect(result.summary).toBe("4 ofertas revisadas, 4 de tus puestos, 2 descartadas por los filtros, 2 entrarían a la cola.");
     });
 
-    it("descarta las que en el título piden tecnologías que no están en el CV", async () => {
+    it("no descarta por el stack del título: decide el match con la descripción", async () => {
         fetchAggregator.mockResolvedValue([
             job("5", { title: "GOLANG KUBERNETES Engineer" }),
             job("6", { title: "Full Stack Developer (REACT / JAVA)" }),
@@ -131,11 +131,20 @@ describe("runJobSearch", () => {
         const result = await runJobSearch("profile-1", settings, new Map(), { dryRun: true });
 
         expect(result.decisions.map((decision) => [decision.externalId, decision.status, decision.reason])).toEqual([
-            ["remotive:5", "REJECTED", "El título pide GOLANG, KUBERNETES"],
-            // Con una de las tecnologías del título alcanza
+            ["remotive:5", "PASSES", null],
             ["remotive:6", "PASSES", null],
-            // Las herramientas no cuentan como stack
             ["remotive:7", "PASSES", null],
+        ]);
+    });
+
+    it("una tecnología evitada en el título sigue descartando", async () => {
+        preferences.loadPreferenceRules.mockResolvedValue({ ...NO_PREFERENCES, avoidTechKeywordIds: new Set(["golang"]) });
+        fetchAggregator.mockResolvedValue([job("5", { title: "GOLANG KUBERNETES Engineer" })]);
+
+        const result = await runJobSearch("profile-1", settings, new Map(), { dryRun: true });
+
+        expect(result.decisions.map((decision) => [decision.externalId, decision.status, decision.reason])).toEqual([
+            ["remotive:5", "REJECTED", "Evitás GOLANG"],
         ]);
     });
 

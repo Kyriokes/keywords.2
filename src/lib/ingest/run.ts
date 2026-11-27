@@ -406,12 +406,9 @@ export async function runJobSearch(
             continue;
         }
 
-        // "Golang Kubernetes Engineer" puede dar match alto con una descripción corta: el título manda
+        // El stack del título no descarta por sí solo (con IA, un lenguaje nuevo no es un impedimento);
+        // solo cuenta para las tecnologías que el usuario evita
         const titleStack = (await detectKeywords(job.title)).filter((keyword) => STACK_CATEGORIES.has(keyword.category));
-        if (titleStack.length && !titleStack.some((keyword) => cvKeywordSet.has(keyword.id))) {
-            reject(`El título pide ${titleStack.map((keyword) => keyword.name).join(", ")}`);
-            continue;
-        }
 
         // Lo que la sección de requisitos nombra es lo que de verdad piden: si ninguna está en el CV, es otro stack
         const section = requirementsSection(description);
