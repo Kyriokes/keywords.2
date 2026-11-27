@@ -6,12 +6,17 @@ const db = vi.hoisted(() => ({
     position: { findFirst: vi.fn() },
     cV: { findFirst: vi.fn() },
     cVKeyword: { findMany: vi.fn() },
+    keyword: { findMany: vi.fn() },
 }));
+const detectKeywords = vi.hoisted(() => vi.fn());
 vi.mock("@/lib/prisma", () => ({ default: db }));
 vi.mock("@/lib/keywords/dictionary", () => ({
-    detectKeywords: async () => [{ id: "react" }, { id: "node" }],
+    detectKeywords,
     resolveTerms: async () => [],
 }));
+
+// Categoría de cada keyword en la base: las demás son lenguajes
+const CATEGORIES: Record<string, string> = { comunicacion: "OTRA" };
 vi.mock("@/lib/positions/dictionary", () => ({
     classifyJobTitle: async () => ({ roleId: "role-fs", roleName: "Full Stack Developer", seniority: null, core: "full stack" }),
 }));
@@ -27,6 +32,10 @@ beforeEach(() => {
     db.position.findFirst.mockResolvedValue(null);
     db.cV.findFirst.mockResolvedValue({ id: "cv-1" });
     db.cVKeyword.findMany.mockResolvedValue([{ keywordId: "react" }]);
+    db.keyword.findMany.mockImplementation(async ({ where }: { where: { id: { in: string[] } } }) =>
+        where.id.in.map((id) => ({ id, category: CATEGORIES[id] ?? "LENGUAJE" }))
+    );
+    detectKeywords.mockResolvedValue([{ id: "react" }, { id: "node" }]);
     db.jobApplication.create.mockImplementation(async ({ data }) => ({ id: "app-1", ...data }));
 });
 
@@ -34,6 +43,15 @@ describe("createApplicationForProfile", () => {
     it("calcula el match con el CV activo cuando no viene de afuera", async () => {
         await createApplicationForProfile("profile-1", base);
 
+        expect(db.jobApplication.create.mock.calls[0][0].data.score).toBe(50);
+    });
+
+    it("el match no cuenta las habilidades blandas de la oferta", async () => {
+        detectKeywords.mockResolvedValue([{ id: "react" }, { id: "node" }, { id: "comunicacion" }]);
+
+        await createApplicationForProfile("profile-1", base);
+
+        // React de React y Node; "Comunicación" no suma al total
         expect(db.jobApplication.create.mock.calls[0][0].data.score).toBe(50);
     });
 

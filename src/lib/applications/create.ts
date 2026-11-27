@@ -70,13 +70,15 @@ export async function createApplicationForProfile(
 
     const classified = await classifyJobTitle(input.jobTitle);
 
-    // Si no viene un score de afuera, se calcula: keywords de la oferta que ya están en el CV activo
+    // Si no viene un score de afuera, se calcula: tecnologías de la oferta que ya están en el CV activo.
+    // La categoría se lee de la base porque los términos recibidos pueden ser keywords nuevas, sin verificar.
     let score = input.score;
     if (score === undefined) {
-        const cvKeywords = activeCv
-            ? await prisma.cVKeyword.findMany({ where: { cvId: activeCv.id }, select: { keywordId: true } })
-            : [];
-        score = computeMatchScore(keywordIds, cvKeywords.map((k) => k.keywordId)) ?? undefined;
+        const [cvKeywords, offerKeywords] = await Promise.all([
+            activeCv ? prisma.cVKeyword.findMany({ where: { cvId: activeCv.id }, select: { keywordId: true } }) : [],
+            prisma.keyword.findMany({ where: { id: { in: keywordIds } }, select: { id: true, category: true } }),
+        ]);
+        score = computeMatchScore(offerKeywords, cvKeywords.map((k) => k.keywordId)) ?? undefined;
     }
 
     const application = await prisma.jobApplication.create({

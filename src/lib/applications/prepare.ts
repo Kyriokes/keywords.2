@@ -5,9 +5,19 @@
 import { detectLanguage, LANGUAGE_NAMES, type LetterLanguage } from "./language";
 import { AI_TELLS, WRITING_GUIDE } from "./voice";
 
-/** Porcentaje (0-100) de keywords de la oferta que están en el CV; null si no hay con qué comparar. */
-export function computeMatchScore(offerKeywordIds: string[], cvKeywordIds: Iterable<string>): number | null {
-    const offer = new Set(offerKeywordIds);
+/**
+ * Categorías que no cuentan para el match: habilidades blandas ("Comunicación") y metodologías genéricas
+ * ("Code Review"). Casi ningún CV las nombra, así que bajaban el porcentaje sin decir nada del stack.
+ * Las keywords sin categoría (nuevas, sin verificar) sí cuentan.
+ */
+const NOT_STACK_CATEGORIES = new Set<string | null>(["OTRA", "METODOLOGIA"]);
+
+/** Porcentaje (0-100) de las tecnologías de la oferta que están en el CV; null si no hay con qué comparar. */
+export function computeMatchScore(
+    offerKeywords: { id: string; category: string | null }[],
+    cvKeywordIds: Iterable<string>
+): number | null {
+    const offer = new Set(offerKeywords.filter((keyword) => !NOT_STACK_CATEGORIES.has(keyword.category)).map((keyword) => keyword.id));
     if (offer.size === 0) return null;
     const cv = new Set(cvKeywordIds);
     if (cv.size === 0) return null;

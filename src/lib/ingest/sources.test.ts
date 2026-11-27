@@ -1,5 +1,6 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import {
+    fetchGetOnBoard,
     htmlToText,
     monthlyUsd,
     parseAshby,
@@ -225,6 +226,45 @@ describe("parsers", () => {
             expect(parseGreenhouse(value, "x")).toEqual([]);
             expect(parseLever(value, "x")).toEqual([]);
         }
+    });
+});
+
+describe("fetchGetOnBoard", () => {
+    const offer = (id: string) => ({
+        id,
+        attributes: { title: "Desarrollador/a Full-Stack", description: "<p>React</p>" },
+        links: { public_url: `https://www.getonbrd.com/jobs/${id}` },
+    });
+    // Una respuesta por pedido: cada página de una categoría trae una oferta con su número
+    const portal = (programmingPages: number) =>
+        vi.fn(async (url: string) => {
+            const { pathname, searchParams } = new URL(url);
+            const page = searchParams.get("page") ?? "1";
+            if (pathname.endsWith("/search/jobs")) {
+                return { data: [offer(`busqueda-${searchParams.get("query")?.toLowerCase().replaceAll(" ", "-")}`)], meta: { total_pages: 1 } };
+            }
+            if (pathname.includes("/categories/programming/")) return { data: [offer(`programming-${page}`)], meta: { total_pages: programmingPages } };
+            if (pathname.includes("/categories/machine-learning-ai/")) return { data: [offer(`ia-${page}`)], meta: { total_pages: 1 } };
+            throw new Error(`pedido inesperado: ${url}`);
+        });
+    const pagesOf = (get: ReturnType<typeof portal>, category: string) =>
+        get.mock.calls.map(([url]) => new URL(url)).filter((url) => url.pathname.includes(`/categories/${category}/`)).map((url) => url.searchParams.get("page"));
+
+    it("además de buscar cada puesto, lee enteras las categorías de programación y de IA", async () => {
+        const get = portal(2);
+
+        const jobs = await fetchGetOnBoard(["Full Stack Developer"], get);
+
+        expect(jobs.map((job) => job.externalId).sort()).toEqual(["busqueda-full-stack-developer", "ia-1", "programming-1", "programming-2"]);
+        expect(pagesOf(get, "programming")).toEqual(["1", "2"]);
+    });
+
+    it("no lee más de 6 páginas por categoría aunque el portal diga que hay más", async () => {
+        const get = portal(50);
+
+        await fetchGetOnBoard(["Full Stack Developer"], get);
+
+        expect(pagesOf(get, "programming")).toEqual(["1", "2", "3", "4", "5", "6"]);
     });
 });
 
